@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tic-Tac-Toe Stable</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
+    <style>
+        :root { --o-color: #ff4757; --x-color: #2f3542; --line-green: #06c755; --card-size: 70px; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f8f9fa; height: 100vh; overflow: hidden; }
+        /* 縮減頂部區域 */
+        .header { width: 100%; padding: 5px 10px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 40px; }
+        #debug-uid { font-size: 10px; color: #999; }
+        #status { font-weight: bold; font-size: 14px; color: var(--line-green); }
+        
+        .board { display: grid; grid-template-columns: repeat(3, var(--card-size)); grid-gap: 8px; margin-top: 15px; }
+        .cell { width: var(--card-size); height: var(--card-size); perspective: 600px; }
+        .cell-inner { position: relative; width: 100%; height: 100%; transition: transform 0.4s; transform-style: preserve-3d; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); background: #eee; }
+        .cell.flipped .cell-inner { transform: rotateY(180deg); }
+        .cell-front, .cell-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: 900; border-radius: 10px; background: white; }
+        .cell-back { transform: rotateY(180deg); }
+        .cell.o .cell-back { color: var(--o-color); }
+        .cell.x .cell-back { color: var(--x-color); }
+        
+        .controls { margin-top: 15px; display: flex; gap: 8px; width: 100%; justify-content: center; }
+        button { padding: 8px 15px; border-radius: 15px; border: none; background: var(--line-green); color: white; font-weight: bold; font-size: 14px; cursor: pointer; }
+        #room-tag { position: fixed; bottom: 5px; right: 5px; font-size: 9px; color: #ddd; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div id="debug-uid">載入中...</div>
+        <div id="status">同步雲端</div>
+    </div>
+    <div class="board" id="board"></div>
+    <div class="controls">
+        <button onclick="manualReset()">重設戰局</button>
+        <button style="background:#999" onclick="liff.closeWindow()">離開</button>
+    </div>
+    <div id="room-tag"></div>
+
+    <script>
+        const LIFF_ID = "2009222789-QB82euV3";
+        const firebaseConfig = {
+            apiKey: "AIzaSyAL9O0RLLY-Ce4GdwFPCAr9lglm-EhWFjs",
+            authDomain: "tictactoe-305fa.firebaseapp.com",
+            databaseURL: "https://tictactoe-305fa-default-rtdb.firebaseio.com",
+            projectId: "tictactoe-305fa",
+            storageBucket: "tictactoe-305fa.firebasestorage.app",
+            messagingSenderId: "130400281186",
+            appId: "1:130400281186:web:70e5a8e91011808585a73b"
+        };
+
+        let db, myUID, myRole = null, currentData = null;
+
+        const boardEl = document.getElementById('board');
+        for (let i = 0; i < 9; i++) {
+            boardEl.innerHTML += `<div class="cell" id="c-${i}" onclick="handlePlay(${i})"><div class="cell-inner"><div class="cell-front"></div><div class="cell-back"></div></div></div>`;
+        }
+
+        async function init() {
+            try {
+                await liff.init({ liffId: LIFF_ID });
+                if (!liff.isLoggedIn()) { liff.login(); return; }
+                const profile = await liff.getProfile();
+                myUID = profile.userId;
+
+                const context = liff.getContext();
+                const roomId = context.groupId || context.roomId || context.utouId || "room_final";
+                document.getElementById('room-tag').innerText = "R:" + roomId.slice(-6);
+                
+                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+                db = firebase.database().ref('stable_v15/' + roomId);
+
+                db.on('value', (snap) => {
+                    const data = snap.val();
+                    currentData = data;
+                    if (data) {
+                        updateRole();
+                        renderUI();
+                    } else {
+                        document.getElementById('status').innerText = "請點擊開局";
+                        document.getElementById('debug-uid').innerText = "ID: " + myUID.slice(-4);
+                        clearUI();
+                    }
+                });
+            } catch (err) {
+                document.getElementById('status').innerText = "連線失敗";
+            }
+        }
+
+        function updateRole() {
+            if (!currentData) return;
+            if (currentData.pO === myUID) myRole = "O";
+            else if (currentData.pX === myUID) myRole = "X";
+            else if (!currentData.pO) { db.update({ pO: myUID }); myRole = "O"; }
+            else if (!currentData.pX) { db.update({ pX: myUID }); myRole = "X"; }
+            else myRole = "VIEW";
+            document.getElementById('debug-uid').innerText = `我是 ${myRole}`;
+        }
+
+        function renderUI() {
+            if (!currentData) return;
+            currentData.board.forEach((val, i) => {
+                const el = document.getElementById(`c-${i}`);
+                if (val) {
+                    el.classList.add('flipped', val.toLowerCase());
+                    el.querySelector('.cell-back').innerText = val;
+                } else {
+                    el.classList.remove('flipped', 'o', 'x');
+                    el.querySelector('.cell-back').innerText = "";
+                }
+            });
+            const s = document.getElementById('status');
+            s.innerText = currentData.winner ? (currentData.winner === "TIE" ? "平手" : currentData.winner + "勝") : `輪到 ${currentData.turn}`;
+        }
+
+        function clearUI() {
+            for (let i = 0; i < 9; i++) {
+                document.getElementById(`c-${i}`).classList.remove('flipped', 'o', 'x');
+            }
+        }
+
+        function handlePlay(i) {
+            // 如果雲端沒資料，點擊格子是「開局」，使用 update 而非 set，避免覆蓋
+            if (!currentData) {
+                db.update({
+                    board: ["","","","","","","","",""],
+                    turn: "O",
+                    winner: null,
+                    pO: myUID
+                });
+                return;
+            }
+            if (myRole !== currentData.turn || currentData.board[i] || currentData.winner || myRole === "VIEW") return;
+            const newBoard = [...currentData.board];
+            newBoard[i] = myRole;
+            db.update({
+                board: newBoard,
+                turn: myRole === "O" ? "X" : "O",
+                winner: checkWinner(newBoard)
+            });
+        }
+
+        function checkWinner(b) {
+            const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+            for (let l of lines) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[0]] === b[l[2]]) return b[l[0]];
+            return b.includes("") ? null : "TIE";
+        }
+
+        function manualReset() {
+            if (db) {
+                // 只有手動重設會清空所有欄位
+                db.set({
+                    board: ["","","","","","","","",""],
+                    turn: "O",
+                    winner: null,
+                    pO: myUID,
+                    pX: ""
+                });
+            }
+        }
+        init();
+    </script>
+</body>
+</html>
