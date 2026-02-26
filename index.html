@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tic-Tac-Toe Ultra Guard</title>
+    <title>Tic-Tac-Toe Final Sync</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
@@ -11,12 +11,12 @@
         :root { --o-color: #ff4757; --x-color: #2f3542; --line-green: #06c755; --card-size: 75px; }
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f8f9fa; height: 100vh; overflow: hidden; }
         .header { width: 100%; padding: 8px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 45px; }
-        #status { font-weight: bold; font-size: 15px; color: var(--line-green); }
+        #status { font-weight: bold; font-size: 14px; color: var(--line-green); }
         .board { display: grid; grid-template-columns: repeat(3, var(--card-size)); grid-gap: 10px; margin-top: 20px; }
         .cell { width: var(--card-size); height: var(--card-size); perspective: 600px; }
-        .cell-inner { position: relative; width: 100%; height: 100%; transition: transform 0.4s; transform-style: preserve-3d; border-radius: 12px; box-shadow: 0 3px 6px rgba(0,0,0,0.1); background: white; }
+        .cell-inner { position: relative; width: 100%; height: 100%; transition: transform 0.4s; transform-style: preserve-3d; border-radius: 12px; box-shadow: 0 3px 6px rgba(0,0,0,0.1); background: #eee; }
         .cell.flipped .cell-inner { transform: rotateY(180deg); }
-        .cell-front, .cell-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 900; border-radius: 12px; }
+        .cell-front, .cell-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 900; border-radius: 12px; background: white; }
         .cell-back { transform: rotateY(180deg); }
         .cell.o .cell-back { color: var(--o-color); }
         .cell.x .cell-back { color: var(--x-color); }
@@ -26,12 +26,12 @@
 </head>
 <body>
     <div class="header">
-        <div id="player-info" style="font-size:11px;color:#999">準備中...</div>
-        <div id="status">同步中...</div>
+        <div id="player-info" style="font-size:10px; color:#999">初始化中...</div>
+        <div id="status">等待連線</div>
     </div>
     <div class="board" id="board"></div>
     <div class="controls">
-        <button onclick="manualReset()">重設戰局</button>
+        <button id="reset-btn" onclick="manualReset()">重設戰局</button>
         <button style="background:#999" onclick="liff.closeWindow()">離開</button>
     </div>
 
@@ -49,7 +49,6 @@
 
         let db, myUID, myRole = null, currentData = null;
 
-        // 初始化棋盤
         const boardEl = document.getElementById('board');
         for (let i = 0; i < 9; i++) {
             boardEl.innerHTML += `<div class="cell" id="c-${i}" onclick="handlePlay(${i})"><div class="cell-inner"><div class="cell-front"></div><div class="cell-back"></div></div></div>`;
@@ -64,32 +63,23 @@
 
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                 
-                // 固定路徑以絕後患
-                db = firebase.database().ref('v19_rescue_mode');
+                // 固定使用 V20 路徑
+                db = firebase.database().ref('v20_final_sync');
 
                 db.on('value', (snap) => {
                     const data = snap.val();
-                    
-                    // 【救回機制】如果雲端沒資料，但手機記憶體裡有，就把它推回去
-                    if (!data) {
-                        const saved = localStorage.getItem('ttt_backup');
-                        if (saved) {
-                            console.log("從手機恢復戰局...");
-                            db.set(JSON.parse(saved));
-                            return;
-                        }
-                        document.getElementById('status').innerText = "點擊開局";
-                        clearUI();
-                    } else {
+                    if (data && data.board) {
                         currentData = data;
-                        // 存一份到手機
-                        localStorage.setItem('ttt_backup', JSON.stringify(data));
                         assignRole();
                         renderUI();
+                    } else {
+                        currentData = null;
+                        document.getElementById('status').innerText = "尚未啟動，請按重設";
+                        clearUI();
                     }
                 });
             } catch (err) {
-                document.getElementById('status').innerText = "連線失敗";
+                document.getElementById('status').innerText = "系統忙碌中";
             }
         }
 
@@ -99,7 +89,7 @@
             else if (!currentData.pO) { db.update({ pO: myUID }); myRole = "O"; }
             else if (!currentData.pX) { db.update({ pX: myUID }); myRole = "X"; }
             else myRole = "VIEW";
-            document.getElementById('player-info').innerText = `身分: ${myRole}`;
+            document.getElementById('player-info').innerText = "我的身分: " + myRole;
         }
 
         function renderUI() {
@@ -113,7 +103,7 @@
                     el.querySelector('.cell-back').innerText = "";
                 }
             });
-            document.getElementById('status').innerText = currentData.winner ? (currentData.winner === "TIE" ? "平手" : currentData.winner + "勝") : `輪到 ${currentData.turn}`;
+            document.getElementById('status').innerText = currentData.winner ? (currentData.winner === "TIE" ? "平手" : currentData.winner + "獲勝") : `輪到 ${currentData.turn}`;
         }
 
         function clearUI() {
@@ -121,11 +111,7 @@
         }
 
         function handlePlay(i) {
-            if (!currentData) {
-                db.update({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID });
-                return;
-            }
-            if (myRole !== currentData.turn || currentData.board[i] || currentData.winner || myRole === "VIEW") return;
+            if (!currentData || myRole !== currentData.turn || currentData.board[i] || currentData.winner || myRole === "VIEW") return;
             const newBoard = [...currentData.board];
             newBoard[i] = myRole;
             db.update({ board: newBoard, turn: myRole === "O" ? "X" : "O", winner: checkWin(newBoard) });
@@ -138,7 +124,7 @@
         }
 
         function manualReset() {
-            localStorage.removeItem('ttt_backup');
+            // 強制覆蓋雲端，啟動全新戰局
             db.set({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID, pX: "" });
         }
 
