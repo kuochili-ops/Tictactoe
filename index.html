@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tic-Tac-Toe Iron Cache</title>
+    <title>Tic-Tac-Toe Final Pro</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
@@ -12,7 +12,7 @@
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f8f9fa; height: 100vh; overflow: hidden; }
         .header { width: 100%; padding: 8px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 45px; }
         #status { font-weight: bold; font-size: 15px; color: var(--line-green); }
-        .board { display: grid; grid-template-columns: repeat(3, var(--card-size)); grid-gap: 10px; margin-top: 25px; }
+        .board { display: grid; grid-template-columns: repeat(3, var(--card-size)); grid-gap: 10px; margin-top: 30px; }
         .cell { width: var(--card-size); height: var(--card-size); perspective: 600px; }
         .cell-inner { position: relative; width: 100%; height: 100%; transition: transform 0.4s; transform-style: preserve-3d; border-radius: 12px; box-shadow: 0 3px 6px rgba(0,0,0,0.1); background: white; }
         .cell.flipped .cell-inner { transform: rotateY(180deg); }
@@ -26,14 +26,14 @@
 </head>
 <body>
     <div class="header">
-        <div id="player-id" style="font-size:11px; color:#999">讀取記憶中...</div>
-        <div id="status">離線模式</div>
+        <div id="player-id" style="font-size:11px; color:#999">同步中...</div>
+        <div id="status">載入記憶...</div>
     </div>
     
     <div class="board" id="board"></div>
     
     <div class="controls">
-        <button onclick="manualReset()">重設戰局</button>
+        <button onclick="Game.reset()">重設戰局</button>
         <button style="background:#999" onclick="liff.closeWindow()">離開</button>
     </div>
 
@@ -49,100 +49,105 @@
             appId: "1:130400281186:web:70e5a8e91011808585a73b"
         };
 
-        let db, myUID, myRole = null, currentData = null;
+        // --- 模組化遊戲控制器 ---
+        const Game = {
+            db: null,
+            myUID: null,
+            myRole: null,
+            data: null,
 
-        // 啟動時立刻渲染棋盤外框
-        const boardEl = document.getElementById('board');
-        for (let i = 0; i < 9; i++) {
-            boardEl.innerHTML += `<div class="cell" id="c-${i}" onclick="handlePlay(${i})"><div class="cell-inner"><div class="cell-front"></div><div class="cell-back"></div></div></div>`;
-        }
+            initUI() {
+                const boardEl = document.getElementById('board');
+                for (let i = 0; i < 9; i++) {
+                    boardEl.innerHTML += `<div class="cell" id="c-${i}" onclick="Game.play(${i})"><div class="cell-inner"><div class="cell-front"></div><div class="cell-back"></div></div></div>`;
+                }
+                // 優先載入本地記憶
+                const cache = localStorage.getItem('ttt_stable_v29');
+                if (cache) {
+                    this.data = JSON.parse(cache);
+                    this.render();
+                }
+            },
 
-        // 【鋼鐵快取】優先顯示上次離開時的樣子
-        const localBackup = localStorage.getItem('ttt_stable_cache');
-        if (localBackup) {
-            currentData = JSON.parse(localBackup);
-            renderUI();
-            document.getElementById('status').innerText = "已恢復戰局";
-        }
-
-        async function init() {
-            try {
+            async connect() {
                 await liff.init({ liffId: LIFF_ID });
                 if (!liff.isLoggedIn()) { liff.login(); return; }
                 const profile = await liff.getProfile();
-                myUID = profile.userId;
+                this.myUID = profile.userId;
 
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                db = firebase.database().ref('v28_final_hope');
+                this.db = firebase.database().ref('v29_stable_final');
 
-                db.on('value', (snap) => {
-                    const data = snap.val();
-                    if (data) {
-                        currentData = data;
-                        localStorage.setItem('ttt_stable_cache', JSON.stringify(data)); // 存入本地
-                        assignRole();
-                        renderUI();
+                this.db.on('value', (snap) => {
+                    const cloudData = snap.val();
+                    if (cloudData) {
+                        this.data = cloudData;
+                        localStorage.setItem('ttt_stable_v29', JSON.stringify(cloudData));
+                        this.assignRole();
+                        this.render();
                     } else {
-                        // 只有真正被重設時才會清空本地
-                        if (!currentData) {
-                            document.getElementById('status').innerText = "點擊開局";
-                        }
+                        document.getElementById('status').innerText = "點擊格子開局";
                     }
                 });
-            } catch (err) {
-                document.getElementById('status').innerText = "連線異常";
-            }
-        }
+            },
 
-        function assignRole() {
-            if (currentData.pO === myUID) myRole = "O";
-            else if (currentData.pX === myUID) myRole = "X";
-            else if (!currentData.pO) { db.update({ pO: myUID }); myRole = "O"; }
-            else if (!currentData.pX) { db.update({ pX: myUID }); myRole = "X"; }
-            else myRole = "VIEW";
-            document.getElementById('player-id').innerText = "身分: " + myRole;
-        }
+            assignRole() {
+                const d = this.data;
+                if (d.pO === this.myUID) this.myRole = "O";
+                else if (d.pX === this.myUID) this.myRole = "X";
+                else if (!d.pO) { this.db.update({ pO: this.myUID }); this.myRole = "O"; }
+                else if (!d.pX) { this.db.update({ pX: this.myUID }); this.myRole = "X"; }
+                else this.myRole = "VIEW";
+                document.getElementById('player-id').innerText = "身分: " + this.myRole;
+            },
 
-        function renderUI() {
-            if (!currentData || !currentData.board) return;
-            currentData.board.forEach((val, i) => {
-                const el = document.getElementById(`c-${i}`);
-                if (val) {
-                    el.classList.add('flipped', val.toLowerCase());
-                    el.querySelector('.cell-back').innerText = val;
-                } else {
-                    el.classList.remove('flipped', 'o', 'x');
-                    el.querySelector('.cell-back').innerText = "";
+            render() {
+                if (!this.data) return;
+                this.data.board.forEach((val, i) => {
+                    const el = document.getElementById(`c-${i}`);
+                    if (val) {
+                        el.classList.add('flipped', val.toLowerCase());
+                        el.querySelector('.cell-back').innerText = val;
+                    } else {
+                        el.classList.remove('flipped', 'o', 'x');
+                        el.querySelector('.cell-back').innerText = "";
+                    }
+                });
+                document.getElementById('status').innerText = this.data.winner ? 
+                    (this.data.winner === "TIE" ? "平手" : this.data.winner + "勝") : `輪到 ${this.data.turn}`;
+            },
+
+            play(i) {
+                if (!this.data) {
+                    this.db.set({ board: Array(9).fill(""), turn: "O", winner: null, pO: this.myUID });
+                    return;
                 }
-            });
-            document.getElementById('status').innerText = currentData.winner ? (currentData.winner === "TIE" ? "平手" : currentData.winner + "勝") : `輪到 ${currentData.turn}`;
-        }
+                if (this.myRole !== this.data.turn || this.data.board[i] || this.data.winner || this.myRole === "VIEW") return;
+                
+                const newBoard = [...this.data.board];
+                newBoard[i] = this.myRole;
+                this.db.update({
+                    board: newBoard,
+                    turn: this.myRole === "O" ? "X" : "O",
+                    winner: this.checkWin(newBoard)
+                });
+            },
 
-        function handlePlay(i) {
-            if (!currentData) {
-                const initData = { board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID };
-                db.set(initData);
-                return;
+            checkWin(b) {
+                const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+                for (let l of lines) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[0]] === b[l[2]]) return b[l[0]];
+                return b.includes("") ? null : "TIE";
+            },
+
+            reset() {
+                localStorage.removeItem('ttt_stable_v29');
+                if (this.db) this.db.set({ board: Array(9).fill(""), turn: "O", winner: null, pO: this.myUID, pX: "" });
             }
-            if (myRole !== currentData.turn || currentData.board[i] || currentData.winner || myRole === "VIEW") return;
-            const newBoard = [...currentData.board];
-            newBoard[i] = myRole;
-            const updateObj = { board: newBoard, turn: myRole === "O" ? "X" : "O", winner: checkWin(newBoard) };
-            db.update(updateObj);
-        }
+        };
 
-        function checkWin(b) {
-            const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-            for (let l of lines) if (b[l[0]] && b[l[0]] === b[l[1]] && b[l[0]] === b[l[2]]) return b[l[0]];
-            return b.includes("") ? null : "TIE";
-        }
-
-        function manualReset() {
-            localStorage.removeItem('ttt_stable_cache');
-            if (db) db.set({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID, pX: "" });
-        }
-
-        init();
+        // 啟動流程
+        Game.initUI();
+        Game.connect();
     </script>
 </body>
 </html>
