@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gomoku Master</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
+    <style>
+        :root { --black: #333; --white: #fff; --board-bg: #e3c193; --line-green: #06c755; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f0f0f0; height: 100vh; touch-action: manipulation; }
+        
+        /* Header 保持精簡 */
+        .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 40px; z-index: 10; }
+        #status { font-weight: bold; font-size: 14px; color: var(--line-green); }
+
+        /* 棋盤容器：確保 15x15 在手機寬度內縮放 */
+        .board-container { margin-top: 10px; padding: 5px; background: var(--board-bg); border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); border: 2px solid #b58d59; }
+        .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
+        
+        .cell { 
+            width: 6vw; height: 6vw; max-width: 24px; max-height: 24px; 
+            border: 0.5px solid #00000033; display: flex; align-items: center; justify-content: center; position: relative;
+        }
+
+        /* 棋子樣式 */
+        .stone { width: 85%; height: 85%; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.3); transform: scale(0); transition: transform 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
+        .stone.black { background: var(--black); transform: scale(1); }
+        .stone.white { background: var(--white); transform: scale(1); }
+
+        .controls { margin-top: 15px; display: flex; gap: 8px; }
+        button { padding: 8px 16px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div id="player-id" style="font-size:10px; color:#999">同步中...</div>
+        <div id="status">載入中</div>
+    </div>
+    
+    <div class="board-container">
+        <div class="board" id="board"></div>
+    </div>
+    
+    <div class="controls">
+        <button onclick="Game.reset()">重設</button>
+        <button style="background:#999" onclick="liff.closeWindow()">離開</button>
+    </div>
+
+    <script>
+        const LIFF_ID = "2009222789-QB82euV3";
+        const firebaseConfig = {
+            apiKey: "AIzaSyAL9O0RLLY-Ce4GdwFPCAr9lglm-EhWFjs",
+            authDomain: "tictactoe-305fa.firebaseapp.com",
+            databaseURL: "https://tictactoe-305fa-default-rtdb.firebaseio.com",
+            projectId: "tictactoe-305fa",
+            storageBucket: "tictactoe-305fa.firebasestorage.app",
+            messagingSenderId: "130400281186",
+            appId: "1:130400281186:web:70e5a8e91011808585a73b"
+        };
+
+        const Game = {
+            size: 15,
+            db: null, myUID: null, myRole: null, data: null,
+
+            initUI() {
+                const boardEl = document.getElementById('board');
+                boardEl.innerHTML = '';
+                for (let i = 0; i < this.size * this.size; i++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.onclick = () => this.play(i);
+                    cell.innerHTML = '<div class="stone"></div>';
+                    boardEl.appendChild(cell);
+                }
+                const cache = localStorage.getItem('gomoku_cache');
+                if (cache) { this.data = JSON.parse(cache); this.render(); }
+            },
+
+            async connect() {
+                await liff.init({ liffId: LIFF_ID });
+                if (!liff.isLoggedIn()) { liff.login(); return; }
+                const profile = await liff.getProfile();
+                this.myUID = profile.userId;
+
+                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+                this.db = firebase.database().ref('gomoku_stable_public');
+
+                this.db.on('value', (snap) => {
+                    const cloudData = snap.val();
+                    if (cloudData) {
+                        this.data = cloudData;
+                        localStorage.setItem('gomoku_cache', JSON.stringify(cloudData));
+                        this.assignRole();
+                        this.render();
+                    } else {
+                        document.getElementById('status').innerText = "點擊開局";
+                    }
+                });
+            },
+
+            assignRole() {
+                const d = this.data;
+                if (d.pB === this.myUID) this.myRole = "Black";
+                else if (d.pW === this.myUID) this.myRole = "White";
+                else if (!d.pB) { this.db.update({ pB: this.myUID }); this.myRole = "Black"; }
+                else if (!d.pW) { this.db.update({ pW: this.myUID }); this.myRole = "White"; }
+                else this.myRole = "VIEW";
+                document.getElementById('player-id').innerText = "你執: " + (this.myRole === 'Black' ? '黑子' : (this.myRole === 'White' ? '白子' : '觀戰'));
+            },
+
+            render() {
+                if (!this.data || !this.data.board) return;
+                const cells = document.querySelectorAll('.cell .stone');
+                this.data.board.forEach((val, i) => {
+                    cells[i].className = 'stone' + (val ? ' ' + val.toLowerCase() : '');
+                });
+                document.getElementById('status').innerText = this.data.winner ? 
+                    (this.data.winner === "TIE" ? "平手" : this.data.winner + "勝!") : 
+                    `輪到: ${this.data.turn === 'Black' ? '黑子' : '白子'}`;
+            },
+
+            play(i) {
+                if (!this.data) {
+                    const emptyBoard = Array(225).fill("");
+                    this.db.set({ board: emptyBoard, turn: "Black", winner: null, pB: this.myUID });
+                    return;
+                }
+                if (this.myRole !== this.data.turn || this.data.board[i] || this.data.winner || this.myRole === "VIEW") return;
+                
+                const newBoard = [...this.data.board];
+                newBoard[i] = this.myRole;
+                const winner = this.checkWin(newBoard, i);
+                
+                this.db.update({
+                    board: newBoard,
+                    turn: this.myRole === "Black" ? "White" : "Black",
+                    winner: winner
+                });
+            },
+
+            checkWin(b, idx) {
+                const r = Math.floor(idx / 15), c = idx % 15, color = b[idx];
+                const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+                for (let [dr, dc] of dirs) {
+                    let count = 1;
+                    for (let i = 1; i < 5; i++) {
+                        const nr = r + dr*i, nc = c + dc*i;
+                        if (nr>=0 && nr<15 && nc>=0 && nc<15 && b[nr*15+nc] === color) count++; else break;
+                    }
+                    for (let i = 1; i < 5; i++) {
+                        const nr = r - dr*i, nc = c - dc*i;
+                        if (nr>=0 && nr<15 && nc>=0 && nc<15 && b[nr*15+nc] === color) count++; else break;
+                    }
+                    if (count >= 5) return color;
+                }
+                return b.includes("") ? null : "TIE";
+            },
+
+            reset() {
+                if (confirm("確定要清空棋盤重新開始嗎？")) {
+                    localStorage.removeItem('gomoku_cache');
+                    this.db.set({ board: Array(225).fill(""), turn: "Black", winner: null, pB: this.myUID, pW: "" });
+                }
+            }
+        };
+
+        Game.initUI();
+        Game.connect();
+    </script>
+</body>
+</html>
