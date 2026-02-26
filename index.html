@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tic-Tac-Toe Room Pro</title>
+    <title>Tic-Tac-Toe Iron Lock</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
@@ -15,28 +15,26 @@
         #status { font-weight: bold; font-size: 15px; color: var(--line-green); }
         .board { display: grid; grid-template-columns: repeat(3, var(--card-size)); grid-gap: 10px; margin-top: 20px; }
         .cell { width: var(--card-size); height: var(--card-size); perspective: 600px; }
-        .cell-inner { position: relative; width: 100%; height: 100%; transition: transform 0.4s; transform-style: preserve-3d; border-radius: 12px; box-shadow: 0 3px 6px rgba(0,0,0,0.1); background: white; }
+        .cell-inner { position: relative; width: 100%; height: 100%; transition: transform 0.4s; transform-style: preserve-3d; border-radius: 12px; box-shadow: 0 3px 6px rgba(0,0,0,0.1); background: #eee; }
         .cell.flipped .cell-inner { transform: rotateY(180deg); }
-        .cell-front, .cell-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 900; border-radius: 12px; }
+        .cell-front, .cell-back { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; font-size: 2.2rem; font-weight: 900; border-radius: 12px; background: white; }
         .cell-back { transform: rotateY(180deg); }
         .cell.o .cell-back { color: var(--o-color); }
         .cell.x .cell-back { color: var(--x-color); }
         .controls { margin-top: 25px; display: flex; gap: 10px; }
         button { padding: 10px 20px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-weight: bold; cursor: pointer; }
-        #room-id { position: fixed; bottom: 5px; left: 5px; font-size: 8px; color: #ccc; }
     </style>
 </head>
 <body>
     <div class="header">
-        <div id="player-info">驗證中...</div>
+        <div id="player-info">連線中...</div>
         <div id="status">同步中...</div>
     </div>
     <div class="board" id="board"></div>
     <div class="controls">
-        <button onclick="manualReset()">重設戰局</button>
+        <button id="reset-btn" onclick="manualReset()">重設戰局</button>
         <button style="background:#999" onclick="liff.closeWindow()">離開</button>
     </div>
-    <div id="room-id"></div>
 
     <script>
         const LIFF_ID = "2009222789-QB82euV3";
@@ -52,7 +50,6 @@
 
         let db, myUID, myRole = null, currentData = null;
 
-        // 渲染棋盤
         const boardEl = document.getElementById('board');
         for (let i = 0; i < 9; i++) {
             boardEl.innerHTML += `<div class="cell" id="c-${i}" onclick="handlePlay(${i})"><div class="cell-inner"><div class="cell-front"></div><div class="cell-back"></div></div></div>`;
@@ -66,30 +63,25 @@
                 myUID = profile.userId;
 
                 const context = liff.getContext();
-                // 【核心修正】嚴格獲取 Room ID，獲取不到就不連 Firebase
-                const finalRoomId = context.groupId || context.roomId || context.utouId;
+                const rid = context.groupId || context.roomId || context.utouId || "global";
                 
-                if (!finalRoomId) {
-                    document.getElementById('status').innerText = "請在群組開啟";
-                    return;
-                }
-
-                document.getElementById('room-id').innerText = "RID: " + finalRoomId.slice(-8);
-
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                 
-                // 使用 v17 路徑
-                db = firebase.database().ref('game_v17_room/' + finalRoomId);
+                // 使用 v18 隔離路徑
+                db = firebase.database().ref('v18_iron_lock/' + rid);
 
                 db.on('value', (snap) => {
                     const data = snap.val();
-                    currentData = data;
                     if (data) {
+                        currentData = data;
                         assignRole();
                         renderUI();
                     } else {
-                        document.getElementById('status').innerText = "點擊格子開局";
-                        document.getElementById('player-info').innerText = "準備就緒";
+                        // 雲端完全沒資料時，只顯示，不動作
+                        currentData = null;
+                        document.getElementById('status').innerText = "請按重設開局";
+                        document.getElementById('player-info').innerText = "尚未啟動";
+                        clearUI();
                     }
                 });
             } catch (err) {
@@ -104,7 +96,7 @@
             else if (!currentData.pO) { db.update({ pO: myUID }); myRole = "O"; }
             else if (!currentData.pX) { db.update({ pX: myUID }); myRole = "X"; }
             else myRole = "VIEW";
-            document.getElementById('player-info').innerText = `身分: ${myRole}`;
+            document.getElementById('player-info').innerText = `我是: ${myRole}`;
         }
 
         function renderUI() {
@@ -123,12 +115,16 @@
             s.innerText = currentData.winner ? (currentData.winner === "TIE" ? "平手" : currentData.winner + "勝") : `輪到 ${currentData.turn}`;
         }
 
-        function handlePlay(i) {
-            if (!currentData) {
-                // 只有第一次開局會用到，之後都走 update
-                db.update({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID });
-                return;
+        function clearUI() {
+            for (let i = 0; i < 9; i++) {
+                document.getElementById(`c-${i}`).classList.remove('flipped', 'o', 'x');
             }
+        }
+
+        function handlePlay(i) {
+            // 【關鍵】如果雲端沒資料，點擊格子「不准開局」，必須點按鈕
+            if (!currentData) return;
+            
             if (myRole !== currentData.turn || currentData.board[i] || currentData.winner || myRole === "VIEW") return;
 
             const newBoard = [...currentData.board];
@@ -147,7 +143,15 @@
         }
 
         function manualReset() {
-            if (db) db.set({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID, pX: "" });
+            if (!db) return;
+            // 這是整份程式唯一會「寫入」初始資料的地方
+            db.set({
+                board: ["","","","","","","","",""],
+                turn: "O",
+                winner: null,
+                pO: myUID,
+                pX: ""
+            });
         }
 
         init();
