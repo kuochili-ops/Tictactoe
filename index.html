@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tic-Tac-Toe Ultra Stable</title>
+    <title>Tic-Tac-Toe Final V26</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
     <style>
         :root { --o-color: #ff4757; --x-color: #2f3542; --line-green: #06c755; --card-size: 75px; }
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f8f9fa; height: 100vh; overflow: hidden; }
-        .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 35px; }
-        #status { font-weight: bold; font-size: 13px; color: var(--line-green); }
-        .board { display: grid; grid-template-columns: repeat(3, var(--card-size)); grid-gap: 10px; margin-top: 15px; }
+        .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 40px; }
+        #status { font-weight: bold; font-size: 14px; color: var(--line-green); }
+        .board { display: grid; grid-template-columns: repeat(3, var(--card-size)); grid-gap: 10px; margin-top: 20px; }
         .cell { width: var(--card-size); height: var(--card-size); perspective: 600px; }
         .cell-inner { position: relative; width: 100%; height: 100%; transition: transform 0.4s; transform-style: preserve-3d; border-radius: 12px; box-shadow: 0 3px 6px rgba(0,0,0,0.1); background: #eee; }
         .cell.flipped .cell-inner { transform: rotateY(180deg); }
@@ -20,23 +20,20 @@
         .cell-back { transform: rotateY(180deg); }
         .cell.o .cell-back { color: var(--o-color); }
         .cell.x .cell-back { color: var(--x-color); }
-        .controls { margin-top: 20px; display: flex; gap: 10px; }
-        button { padding: 8px 18px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-weight: bold; cursor: pointer; font-size: 14px; }
-        #loading-view { position: fixed; inset: 0; background: white; display: flex; justify-content: center; align-items: center; z-index: 99; font-size: 14px; color: #999; }
+        .controls { margin-top: 25px; display: flex; gap: 10px; }
+        button { padding: 10px 20px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div id="loading-view">同步雲端資料...</div>
-
     <div class="header">
-        <div id="player-id" style="font-size:10px;color:#999">連線中</div>
-        <div id="status">同步中</div>
+        <div id="player-id" style="font-size:10px;color:#999">連線中...</div>
+        <div id="status">同步中...</div>
     </div>
     
     <div class="board" id="board"></div>
     
     <div class="controls">
-        <button onclick="manualReset()">重設戰局</button>
+        <button onclick="manualReset()">開始遊戲/重設</button>
         <button style="background:#999" onclick="liff.closeWindow()">離開</button>
     </div>
 
@@ -52,7 +49,7 @@
             appId: "1:130400281186:web:70e5a8e91011808585a73b"
         };
 
-        let db, myUID, myRole = null, currentData = null, hasInitialized = false;
+        let db, myUID, myRole = null, currentData = null;
 
         const boardEl = document.getElementById('board');
         for (let i = 0; i < 9; i++) {
@@ -67,34 +64,28 @@
                 myUID = profile.userId;
 
                 const context = liff.getContext();
-                const roomId = context.groupId || context.roomId || context.utouId || "global_v25";
+                const roomId = context.groupId || context.roomId || context.utouId || "lobby_v26";
                 
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                db = firebase.database().ref('game_v25/' + roomId);
+                
+                // 全新隔離路徑
+                db = firebase.database().ref('game_v26_final/' + roomId);
 
-                // 核心：連線監聽
                 db.on('value', (snap) => {
                     const data = snap.val();
-                    
-                    if (data) {
+                    // 只有當 data 存在且 data.init 為 true 時才渲染
+                    if (data && data.init) {
                         currentData = data;
                         checkRole();
                         renderUI();
-                        document.getElementById('loading-view').style.display = 'none';
-                        hasInitialized = true;
                     } else {
-                        // 如果 1 秒後還是沒資料，才顯示「尚未啟動」
-                        setTimeout(() => {
-                            if (!hasInitialized) {
-                                document.getElementById('status').innerText = "點擊重設開局";
-                                document.getElementById('loading-view').style.display = 'none';
-                                clearUI();
-                            }
-                        }, 1000);
+                        currentData = null;
+                        document.getElementById('status').innerText = "請點擊按鈕開局";
+                        clearUI();
                     }
                 });
             } catch (err) {
-                document.getElementById('status').innerText = "系統忙碌";
+                document.getElementById('status').innerText = "系統異常";
             }
         }
 
@@ -139,10 +130,15 @@
         }
 
         function manualReset() {
-            if (db) {
-                hasInitialized = true;
-                db.set({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID, pX: "" });
-            }
+            // 加入 init: true 標籤，這才是真正的開局命令
+            if (db) db.set({ 
+                init: true,
+                board: ["","","","","","","","",""], 
+                turn: "O", 
+                winner: null, 
+                pO: myUID, 
+                pX: "" 
+            });
         }
 
         init();
