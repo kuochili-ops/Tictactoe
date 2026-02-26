@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tic-Tac-Toe Stable</title>
+    <title>Tic-Tac-Toe Iron Cache</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
@@ -26,15 +26,15 @@
 </head>
 <body>
     <div class="header">
-        <div id="player-id" style="font-size:11px; color:#999">連線中...</div>
-        <div id="status">同步雲端...</div>
+        <div id="player-id" style="font-size:11px; color:#999">讀取記憶中...</div>
+        <div id="status">離線模式</div>
     </div>
     
     <div class="board" id="board"></div>
     
     <div class="controls">
         <button onclick="manualReset()">重設戰局</button>
-        <button style="background:#999" onclick="liff.closeWindow()">離開遊戲</button>
+        <button style="background:#999" onclick="liff.closeWindow()">離開</button>
     </div>
 
     <script>
@@ -51,9 +51,18 @@
 
         let db, myUID, myRole = null, currentData = null;
 
+        // 啟動時立刻渲染棋盤外框
         const boardEl = document.getElementById('board');
         for (let i = 0; i < 9; i++) {
             boardEl.innerHTML += `<div class="cell" id="c-${i}" onclick="handlePlay(${i})"><div class="cell-inner"><div class="cell-front"></div><div class="cell-back"></div></div></div>`;
+        }
+
+        // 【鋼鐵快取】優先顯示上次離開時的樣子
+        const localBackup = localStorage.getItem('ttt_stable_cache');
+        if (localBackup) {
+            currentData = JSON.parse(localBackup);
+            renderUI();
+            document.getElementById('status').innerText = "已恢復戰局";
         }
 
         async function init() {
@@ -64,24 +73,24 @@
                 myUID = profile.userId;
 
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                
-                // 【終極鎖定】不再分房，共用同一個穩定的座標
-                db = firebase.database().ref('v27_stable_public');
+                db = firebase.database().ref('v28_final_hope');
 
                 db.on('value', (snap) => {
                     const data = snap.val();
                     if (data) {
                         currentData = data;
+                        localStorage.setItem('ttt_stable_cache', JSON.stringify(data)); // 存入本地
                         assignRole();
                         renderUI();
                     } else {
-                        // 雲端沒資料時的唯一寫入點
-                        document.getElementById('status').innerText = "點擊格子開局";
-                        document.getElementById('player-id').innerText = "等待玩家";
+                        // 只有真正被重設時才會清空本地
+                        if (!currentData) {
+                            document.getElementById('status').innerText = "點擊開局";
+                        }
                     }
                 });
             } catch (err) {
-                document.getElementById('status').innerText = "系統忙碌";
+                document.getElementById('status').innerText = "連線異常";
             }
         }
 
@@ -95,6 +104,7 @@
         }
 
         function renderUI() {
+            if (!currentData || !currentData.board) return;
             currentData.board.forEach((val, i) => {
                 const el = document.getElementById(`c-${i}`);
                 if (val) {
@@ -110,13 +120,15 @@
 
         function handlePlay(i) {
             if (!currentData) {
-                db.update({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID });
+                const initData = { board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID };
+                db.set(initData);
                 return;
             }
             if (myRole !== currentData.turn || currentData.board[i] || currentData.winner || myRole === "VIEW") return;
             const newBoard = [...currentData.board];
             newBoard[i] = myRole;
-            db.update({ board: newBoard, turn: myRole === "O" ? "X" : "O", winner: checkWin(newBoard) });
+            const updateObj = { board: newBoard, turn: myRole === "O" ? "X" : "O", winner: checkWin(newBoard) };
+            db.update(updateObj);
         }
 
         function checkWin(b) {
@@ -126,6 +138,7 @@
         }
 
         function manualReset() {
+            localStorage.removeItem('ttt_stable_cache');
             if (db) db.set({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID, pX: "" });
         }
 
