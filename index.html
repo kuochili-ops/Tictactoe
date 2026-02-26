@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tic-Tac-Toe Classic</title>
+    <title>Tic-Tac-Toe Room Pro</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
@@ -23,18 +23,20 @@
         .cell.x .cell-back { color: var(--x-color); }
         .controls { margin-top: 25px; display: flex; gap: 10px; }
         button { padding: 10px 20px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-weight: bold; cursor: pointer; }
+        #room-id { position: fixed; bottom: 5px; left: 5px; font-size: 8px; color: #ccc; }
     </style>
 </head>
 <body>
     <div class="header">
-        <div id="player-info">讀取中...</div>
-        <div id="status">同步雲端...</div>
+        <div id="player-info">驗證中...</div>
+        <div id="status">同步中...</div>
     </div>
     <div class="board" id="board"></div>
     <div class="controls">
         <button onclick="manualReset()">重設戰局</button>
         <button style="background:#999" onclick="liff.closeWindow()">離開</button>
     </div>
+    <div id="room-id"></div>
 
     <script>
         const LIFF_ID = "2009222789-QB82euV3";
@@ -63,10 +65,21 @@
                 const profile = await liff.getProfile();
                 myUID = profile.userId;
 
+                const context = liff.getContext();
+                // 【核心修正】嚴格獲取 Room ID，獲取不到就不連 Firebase
+                const finalRoomId = context.groupId || context.roomId || context.utouId;
+                
+                if (!finalRoomId) {
+                    document.getElementById('status').innerText = "請在群組開啟";
+                    return;
+                }
+
+                document.getElementById('room-id').innerText = "RID: " + finalRoomId.slice(-8);
+
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                 
-                // 【核心回歸】使用單一固定路徑，不隨房間改變
-                db = firebase.database().ref('global_match_v16');
+                // 使用 v17 路徑
+                db = firebase.database().ref('game_v17_room/' + finalRoomId);
 
                 db.on('value', (snap) => {
                     const data = snap.val();
@@ -75,24 +88,23 @@
                         assignRole();
                         renderUI();
                     } else {
-                        document.getElementById('status').innerText = "點擊開局";
-                        document.getElementById('player-info').innerText = "ID: " + myUID.slice(-4);
+                        document.getElementById('status').innerText = "點擊格子開局";
+                        document.getElementById('player-info').innerText = "準備就緒";
                     }
                 });
             } catch (err) {
-                document.getElementById('status').innerText = "連線失敗";
+                document.getElementById('status').innerText = "系統錯誤";
             }
         }
 
         function assignRole() {
             if (!currentData) return;
-            // 綁定 UID 到角色，確保不會一個人下兩手
             if (currentData.pO === myUID) myRole = "O";
             else if (currentData.pX === myUID) myRole = "X";
             else if (!currentData.pO) { db.update({ pO: myUID }); myRole = "O"; }
             else if (!currentData.pX) { db.update({ pX: myUID }); myRole = "X"; }
             else myRole = "VIEW";
-            document.getElementById('player-info').innerText = `我是: ${myRole}`;
+            document.getElementById('player-info').innerText = `身分: ${myRole}`;
         }
 
         function renderUI() {
@@ -113,11 +125,10 @@
 
         function handlePlay(i) {
             if (!currentData) {
-                // 初始化使用 update，防止覆蓋正在載入中的雲端資料
+                // 只有第一次開局會用到，之後都走 update
                 db.update({ board: ["","","","","","","","",""], turn: "O", winner: null, pO: myUID });
                 return;
             }
-            // 嚴格身分檢查
             if (myRole !== currentData.turn || currentData.board[i] || currentData.winner || myRole === "VIEW") return;
 
             const newBoard = [...currentData.board];
