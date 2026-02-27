@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gomoku Stable Room</title>
+    <title>Gomoku Persistence v38</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
@@ -11,8 +11,7 @@
         :root { --black: #333; --white: #fff; --board-bg: #e3c193; --line-green: #06c755; }
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f0f0f0; min-height: 100vh; overflow-x: hidden; }
         .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 50px; z-index: 100; position: sticky; top: 0; }
-        #room-tag { font-size: 10px; color: white; background: #999; padding: 2px 6px; border-radius: 4px; margin-top: 2px; display: inline-block; }
-        
+        #room-tag { font-size: 10px; color: white; background: #999; padding: 2px 6px; border-radius: 4px; }
         .game-main { width: 100%; display: flex; flex-direction: column; align-items: center; padding: 10px 0; flex: 1; }
         .board-container { position: relative; padding: 5px; background: var(--board-bg); border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); border: 2px solid #b58d59; }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
@@ -21,11 +20,8 @@
         .stone.black { background: var(--black); transform: scale(1); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
         .stone.white { background: var(--white); transform: scale(1); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
         .last-move::after { content: ''; width: 6px; height: 6px; background: #ff4757; border-radius: 50%; position: absolute; z-index: 10; }
-
-        /* 訊息顯示區：完全透明穿透 */
         #chat-display { position: absolute; bottom: 10px; left: 10px; right: 10px; height: 80px; pointer-events: none; z-index: 20; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
         .chat-msg { background: rgba(255, 255, 255, 0.5); border-radius: 4px; padding: 2px 6px; margin-bottom: 2px; font-size: 11px; width: fit-content; max-width: 85%; color: #333; font-weight: bold; }
-
         .bottom-panel { width: 100%; background: white; border-top: 1px solid #ddd; padding: 10px 15px 30px 15px; box-sizing: border-box; }
         .input-group { display: flex; gap: 8px; margin-bottom: 12px; }
         #chat-input { flex: 1; border: 1px solid #ccc; border-radius: 20px; padding: 8px 15px; font-size: 14px; outline: none; }
@@ -36,26 +32,24 @@
 <body>
     <div class="header">
         <div style="display:flex; flex-direction:column">
-            <span id="player-id" style="font-size:12px; font-weight:bold; color:var(--black)">準備中...</span>
+            <span id="player-id" style="font-size:12px; font-weight:bold; color:var(--black)">讀取存檔...</span>
             <span id="room-tag">Room: 初始化</span>
         </div>
-        <div id="status" style="font-weight:bold; color:var(--line-green)">連線中...</div>
+        <div id="status" style="font-weight:bold; color:var(--line-green)">同步中...</div>
     </div>
-    
     <div class="game-main">
         <div class="board-container">
             <div class="board" id="board"></div>
             <div id="chat-display"></div>
         </div>
     </div>
-
     <div class="bottom-panel">
         <div class="input-group">
-            <input type="text" id="chat-input" placeholder="說點什麼...">
+            <input type="text" id="chat-input" placeholder="傳送訊息...">
             <button style="background:var(--black); width:60px" onclick="Game.sendChat()">傳送</button>
         </div>
         <div class="btn-group">
-            <button onclick="Game.reset()" style="background:#ff4757">重設棋盤</button>
+            <button onclick="Game.reset()" style="background:#ff4757">重設戰局</button>
             <button onclick="Game.switchRoom()" style="background:#55acee">切換房號</button>
             <button onclick="liff.closeWindow()" style="background:#999">離開</button>
         </div>
@@ -85,6 +79,12 @@
                     cell.innerHTML = '<div class="stone"></div>';
                     boardEl.appendChild(cell);
                 }
+                // [修復重點] 先從本地讀取緩存，保證點開即見
+                const cache = localStorage.getItem('gomoku_v38_data');
+                if (cache) {
+                    this.data = JSON.parse(cache);
+                    this.render();
+                }
                 this.start();
             },
 
@@ -97,26 +97,29 @@
                     this.myName = prof.displayName;
 
                     const context = liff.getContext();
-                    // 強制判定房號：手動 > 群組 > 房間 > 個人
-                    this.room = manualRoom || context.groupId || context.roomId || context.utouId || "Public_Hall";
-                    document.getElementById('room-tag').innerText = "Room: " + (this.room.length > 15 ? this.room.substring(0,8) + "..." : this.room);
+                    this.room = manualRoom || context.groupId || context.roomId || context.utouId || "Lobby";
+                    document.getElementById('room-tag').innerText = "Room ID: " + (this.room.length > 10 ? this.room.substring(0,8) + "..." : this.room);
 
                     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                     if (this.db) this.db.off();
-                    this.db = firebase.database().ref('v37/' + this.room);
+                    this.db = firebase.database().ref('v38/' + this.room);
 
+                    // [修復重點] 讀取邏輯優化
                     this.db.on('value', snap => {
-                        this.data = snap.val();
-                        if (!this.data) {
-                            this.db.set({ board: Array(225).fill(""), turn: "Black", pB: this.myUID, pBName: this.myName });
-                        } else {
+                        const val = snap.val();
+                        if (val) {
+                            this.data = val;
+                            localStorage.setItem('gomoku_v38_data', JSON.stringify(val));
                             this.checkRole();
                             this.render();
+                        } else {
+                            // 只有雲端完全沒資料才初始化，防止「進來就重來」
+                            this.db.set({ board: Array(225).fill(""), turn: "Black", pB: this.myUID, pBName: this.myName, lastIdx: -1 });
                         }
                     });
                 } catch (err) {
-                    document.getElementById('status').innerText = "重試中...";
-                    setTimeout(() => this.start(), 2000);
+                    document.getElementById('status').innerText = "連線中...";
+                    setTimeout(() => this.start(), 1500);
                 }
             },
 
@@ -133,7 +136,7 @@
             },
 
             render() {
-                if (!this.data) return;
+                if (!this.data || !this.data.board) return;
                 const cells = document.querySelectorAll('.cell');
                 this.data.board.forEach((v, i) => {
                     cells[i].querySelector('.stone').className = 'stone' + (v ? ' ' + v.toLowerCase() : '');
@@ -182,12 +185,17 @@
             },
 
             switchRoom() {
-                const r = prompt("請輸入自訂房號：", "Room1");
-                if (r) this.start(r);
+                const r = prompt("進入特定房間（房號）：", "Room1");
+                if (r) {
+                    localStorage.removeItem('gomoku_v38_data'); // 切房時清除舊緩存
+                    this.start(r);
+                }
             },
 
             reset() {
-                if (confirm("重設此房戰局？")) this.db.set({ board: Array(225).fill(""), turn: "Black", pB: this.myUID, pBName: this.myName });
+                if (confirm("這會清除此房間所有棋子，確定重設？")) {
+                    this.db.set({ board: Array(225).fill(""), turn: "Black", pB: this.myUID, pBName: this.myName, lastIdx: -1 });
+                }
             }
         };
 
