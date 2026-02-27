@@ -3,55 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gomoku Persistence v38</title>
+    <title>Gomoku Auto-Match v39</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
     <style>
         :root { --black: #333; --white: #fff; --board-bg: #e3c193; --line-green: #06c755; }
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f0f0f0; min-height: 100vh; overflow-x: hidden; }
+        
+        /* 標題與房號顯示 */
         .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 50px; z-index: 100; position: sticky; top: 0; }
-        #room-tag { font-size: 10px; color: white; background: #999; padding: 2px 6px; border-radius: 4px; }
+        #room-id-tag { font-size: 10px; color: #888; background: #f8f8f8; padding: 2px 5px; border-radius: 4px; border: 1px solid #ddd; }
+        
         .game-main { width: 100%; display: flex; flex-direction: column; align-items: center; padding: 10px 0; flex: 1; }
-        .board-container { position: relative; padding: 5px; background: var(--board-bg); border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); border: 2px solid #b58d59; }
+        
+        /* 棋盤容器 */
+        .board-container { position: relative; padding: 5px; background: var(--board-bg); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border: 2px solid #b58d59; }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
-        .cell { width: 6.3vw; height: 6.3vw; max-width: 25px; max-height: 25px; border: 0.5px solid #00000015; display: flex; align-items: center; justify-content: center; position: relative; }
+        .cell { width: 6.4vw; height: 6.4vw; max-width: 25px; max-height: 25px; border: 0.5px solid #00000015; display: flex; align-items: center; justify-content: center; position: relative; }
         .stone { width: 85%; height: 85%; border-radius: 50%; transform: scale(0); transition: 0.15s; z-index: 5; }
         .stone.black { background: var(--black); transform: scale(1); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
         .stone.white { background: var(--white); transform: scale(1); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
         .last-move::after { content: ''; width: 6px; height: 6px; background: #ff4757; border-radius: 50%; position: absolute; z-index: 10; }
-        #chat-display { position: absolute; bottom: 10px; left: 10px; right: 10px; height: 80px; pointer-events: none; z-index: 20; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
-        .chat-msg { background: rgba(255, 255, 255, 0.5); border-radius: 4px; padding: 2px 6px; margin-bottom: 2px; font-size: 11px; width: fit-content; max-width: 85%; color: #333; font-weight: bold; }
-        .bottom-panel { width: 100%; background: white; border-top: 1px solid #ddd; padding: 10px 15px 30px 15px; box-sizing: border-box; }
+
+        /* 訊息覆蓋區（穿透點擊） */
+        #chat-display { position: absolute; bottom: 8px; left: 8px; right: 8px; height: 75px; pointer-events: none; z-index: 20; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
+        .chat-msg { background: rgba(255, 255, 255, 0.45); border-radius: 4px; padding: 2px 6px; margin-bottom: 2px; font-size: 11px; width: fit-content; max-width: 90%; color: #222; font-weight: bold; }
+
+        /* 底部操作面板 */
+        .bottom-panel { width: 100%; background: white; border-top: 1px solid #ddd; padding: 10px 15px 35px 15px; box-sizing: border-box; }
         .input-group { display: flex; gap: 8px; margin-bottom: 12px; }
-        #chat-input { flex: 1; border: 1px solid #ccc; border-radius: 20px; padding: 8px 15px; font-size: 14px; outline: none; }
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-        button { padding: 10px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-size: 12px; font-weight: bold; }
+        #chat-input { flex: 1; border: 1px solid #ccc; border-radius: 20px; padding: 8px 15px; font-size: 14px; outline: none; -webkit-appearance: none; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 10px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-size: 13px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="header">
         <div style="display:flex; flex-direction:column">
-            <span id="player-id" style="font-size:12px; font-weight:bold; color:var(--black)">讀取存檔...</span>
-            <span id="room-tag">Room: 初始化</span>
+            <span id="player-status" style="font-size:12px; font-weight:bold; color:var(--black)">身分識別中...</span>
+            <span id="room-id-tag">Room: 載入中</span>
         </div>
-        <div id="status" style="font-weight:bold; color:var(--line-green)">同步中...</div>
+        <div id="game-turn" style="font-weight:bold; color:var(--line-green)">連線中</div>
     </div>
+
     <div class="game-main">
         <div class="board-container">
             <div class="board" id="board"></div>
             <div id="chat-display"></div>
         </div>
     </div>
+
     <div class="bottom-panel">
         <div class="input-group">
-            <input type="text" id="chat-input" placeholder="傳送訊息...">
-            <button style="background:var(--black); width:60px" onclick="Game.sendChat()">傳送</button>
+            <input type="text" id="chat-input" placeholder="傳送即時訊息...">
+            <button style="background:var(--black); width:70px" onclick="Game.sendChat()">傳送</button>
         </div>
         <div class="btn-group">
-            <button onclick="Game.reset()" style="background:#ff4757">重設戰局</button>
-            <button onclick="Game.switchRoom()" style="background:#55acee">切換房號</button>
-            <button onclick="liff.closeWindow()" style="background:#999">離開</button>
+            <button onclick="Game.reset()" style="background:#ff4757">重新開局</button>
+            <button onclick="liff.closeWindow()" style="background:#999">離開遊戲</button>
         </div>
     </div>
 
@@ -68,7 +78,7 @@
         };
 
         const Game = {
-            db: null, myUID: null, myName: "匿名", myRole: null, data: null, room: null,
+            db: null, myUID: null, myName: "玩家", myRole: null, data: null, currentRoom: null,
 
             init() {
                 const boardEl = document.getElementById('board');
@@ -79,51 +89,48 @@
                     cell.innerHTML = '<div class="stone"></div>';
                     boardEl.appendChild(cell);
                 }
-                // [修復重點] 先從本地讀取緩存，保證點開即見
-                const cache = localStorage.getItem('gomoku_v38_data');
-                if (cache) {
-                    this.data = JSON.parse(cache);
-                    this.render();
-                }
-                this.start();
+                this.connect();
             },
 
-            async start(manualRoom = null) {
+            async connect() {
                 try {
                     await liff.init({ liffId: LIFF_ID });
                     if (!liff.isLoggedIn()) { liff.login(); return; }
-                    const prof = await liff.getProfile();
-                    this.myUID = prof.userId;
-                    this.myName = prof.displayName;
+                    const profile = await liff.getProfile();
+                    this.myUID = profile.userId;
+                    this.myName = profile.displayName;
 
                     const context = liff.getContext();
-                    this.room = manualRoom || context.groupId || context.roomId || context.utouId || "Lobby";
-                    document.getElementById('room-tag').innerText = "Room ID: " + (this.room.length > 10 ? this.room.substring(0,8) + "..." : this.room);
+                    // 核心逻辑：自動抓取開啟紀錄中的 ID (群組 > 房間 > 個人)
+                    this.currentRoom = context.groupId || context.roomId || context.utouId || "Personal_" + this.myUID;
+                    document.getElementById('room-id-tag').innerText = "Match ID: " + this.currentRoom.substring(0, 12);
 
                     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                    if (this.db) this.db.off();
-                    this.db = firebase.database().ref('v38/' + this.room);
+                    this.db = firebase.database().ref('v39_match/' + this.currentRoom);
 
-                    // [修復重點] 讀取邏輯優化
+                    // 抓取配對記錄
                     this.db.on('value', snap => {
-                        const val = snap.val();
-                        if (val) {
-                            this.data = val;
-                            localStorage.setItem('gomoku_v38_data', JSON.stringify(val));
-                            this.checkRole();
+                        const cloudData = snap.val();
+                        if (cloudData) {
+                            this.data = cloudData;
+                            this.assignRole();
                             this.render();
                         } else {
-                            // 只有雲端完全沒資料才初始化，防止「進來就重來」
-                            this.db.set({ board: Array(225).fill(""), turn: "Black", pB: this.myUID, pBName: this.myName, lastIdx: -1 });
+                            // 初始化此配對房
+                            this.db.set({ 
+                                board: Array(225).fill(""), 
+                                turn: "Black", 
+                                pB: this.myUID, 
+                                pBName: this.myName,
+                                lastIdx: -1,
+                                createdAt: Date.now()
+                            });
                         }
                     });
-                } catch (err) {
-                    document.getElementById('status').innerText = "連線中...";
-                    setTimeout(() => this.start(), 1500);
-                }
+                } catch (e) { document.getElementById('game-turn').innerText = "連線重試中"; }
             },
 
-            checkRole() {
+            assignRole() {
                 const d = this.data;
                 if (d.pB === this.myUID) this.myRole = "Black";
                 else if (d.pW === this.myUID) this.myRole = "White";
@@ -131,18 +138,19 @@
                 else if (!d.pW) { this.db.update({ pW: this.myUID, pWName: this.myName }); this.myRole = "White"; }
                 else this.myRole = "VIEW";
                 
-                const icon = this.myRole === 'Black' ? '⚫' : (this.myRole === 'White' ? '⚪' : '👀');
-                document.getElementById('player-id').innerText = `${icon} ${this.myName}`;
+                const roleIcon = this.myRole === 'Black' ? '⚫' : (this.myRole === 'White' ? '⚪' : '👀');
+                document.getElementById('player-status').innerText = `${roleIcon} ${this.myName}`;
             },
 
             render() {
-                if (!this.data || !this.data.board) return;
+                if (!this.data) return;
                 const cells = document.querySelectorAll('.cell');
-                this.data.board.forEach((v, i) => {
-                    cells[i].querySelector('.stone').className = 'stone' + (v ? ' ' + v.toLowerCase() : '');
+                this.data.board.forEach((val, i) => {
+                    cells[i].querySelector('.stone').className = 'stone' + (val ? ' ' + val.toLowerCase() : '');
                     cells[i].classList.toggle('last-move', i === this.data.lastIdx);
                 });
-                document.getElementById('status').innerText = this.data.winner ? (this.data.winner + "勝!") : (this.data.turn === 'Black' ? "黑棋回合" : "白棋回合");
+                document.getElementById('game-turn').innerText = this.data.winner ? 
+                    (this.data.winner + "勝!") : (this.data.turn === 'Black' ? "黑棋回合" : "白棋回合");
                 
                 const chatBox = document.getElementById('chat-display');
                 if (this.data.chats) {
@@ -152,24 +160,29 @@
 
             play(i) {
                 if (!this.data || this.data.winner || this.data.board[i] || this.myRole !== this.data.turn || this.myRole === "VIEW") return;
-                const b = [...this.data.board];
-                b[i] = this.myRole;
-                const win = this.checkWin(b, i);
-                this.db.update({ board: b, turn: this.myRole === "Black" ? "White" : "Black", lastIdx: i, winner: win });
+                const newBoard = [...this.data.board];
+                newBoard[i] = this.myRole;
+                const winner = this.checkWin(newBoard, i);
+                this.db.update({ 
+                    board: newBoard, 
+                    turn: this.myRole === "Black" ? "White" : "Black", 
+                    lastIdx: i, 
+                    winner: winner 
+                });
             },
 
             checkWin(b, idx) {
-                const r = Math.floor(idx/15), c = idx%15, col = b[idx];
+                const r = Math.floor(idx/15), c = idx%15, color = b[idx];
                 const dirs = [[1,0],[0,1],[1,1],[1,-1]];
                 for (let [dr, dc] of dirs) {
-                    let cnt = 1;
-                    for (let s of [1, -1]) {
+                    let count = 1;
+                    for (let step of [1, -1]) {
                         for (let i = 1; i < 5; i++) {
-                            const nr = r + dr*i*s, nc = c + dc*i*s;
-                            if (nr>=0 && nr<15 && nc>=0 && nc<15 && b[nr*15+nc] === col) cnt++; else break;
+                            const nr = r + dr*i*step, nc = c + dc*i*step;
+                            if (nr>=0 && nr<15 && nc>=0 && nc<15 && b[nr*15+nc] === color) count++; else break;
                         }
                     }
-                    if (cnt >= 5) return col;
+                    if (count >= 5) return color;
                 }
                 return b.includes("") ? null : "TIE";
             },
@@ -179,22 +192,20 @@
                 if (!input.value.trim()) return;
                 const chats = this.data.chats || [];
                 chats.push({ u: this.myName, m: input.value });
-                if (chats.length > 20) chats.shift();
+                if (chats.length > 25) chats.shift();
                 this.db.update({ chats });
                 input.value = '';
             },
 
-            switchRoom() {
-                const r = prompt("進入特定房間（房號）：", "Room1");
-                if (r) {
-                    localStorage.removeItem('gomoku_v38_data'); // 切房時清除舊緩存
-                    this.start(r);
-                }
-            },
-
             reset() {
-                if (confirm("這會清除此房間所有棋子，確定重設？")) {
-                    this.db.set({ board: Array(225).fill(""), turn: "Black", pB: this.myUID, pBName: this.myName, lastIdx: -1 });
+                if (confirm("這會清空此聊天室的所有對戰紀錄，確定？")) {
+                    this.db.set({ 
+                        board: Array(225).fill(""), 
+                        turn: "Black", 
+                        pB: this.myUID, 
+                        pBName: this.myName,
+                        lastIdx: -1 
+                    });
                 }
             }
         };
