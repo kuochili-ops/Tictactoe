@@ -3,49 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gomoku Master</title>
+    <title>Gomoku Social</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
     <style>
         :root { --black: #333; --white: #fff; --board-bg: #e3c193; --line-green: #06c755; }
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f0f0f0; height: 100vh; touch-action: manipulation; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f0f0f0; height: 100vh; overflow: hidden; }
         
-        /* Header 保持精簡 */
-        .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 40px; z-index: 10; }
+        /* Header */
+        .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 40px; }
         #status { font-weight: bold; font-size: 14px; color: var(--line-green); }
 
-        /* 棋盤容器：確保 15x15 在手機寬度內縮放 */
+        /* 棋盤 */
         .board-container { margin-top: 10px; padding: 5px; background: var(--board-bg); border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); border: 2px solid #b58d59; }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
+        .cell { width: 6.2vw; height: 6.2vw; max-width: 25px; max-height: 25px; border: 0.5px solid #00000033; display: flex; align-items: center; justify-content: center; position: relative; }
+        .stone { width: 85%; height: 85%; border-radius: 50%; transform: scale(0); transition: 0.2s; }
+        .stone.black { background: var(--black); transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+        .stone.white { background: var(--white); transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .last-move::after { content: ''; width: 6px; height: 6px; background: #ff4757; border-radius: 50%; position: absolute; z-index: 5; }
+
+        /* 聊天室區塊 */
+        .chat-area { width: 95%; flex: 1; display: flex; flex-direction: column; margin-top: 10px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
+        #chat-box { flex: 1; overflow-y: auto; padding: 10px; font-size: 12px; line-height: 1.5; color: #555; }
+        .chat-input-row { display: flex; padding: 8px; border-top: 1px solid #eee; }
+        #chat-input { flex: 1; border: 1px solid #ddd; border-radius: 15px; padding: 5px 12px; outline: none; font-size: 13px; }
         
-        .cell { 
-            width: 6vw; height: 6vw; max-width: 24px; max-height: 24px; 
-            border: 0.5px solid #00000033; display: flex; align-items: center; justify-content: center; position: relative;
-        }
-
-        /* 棋子樣式 */
-        .stone { width: 85%; height: 85%; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.3); transform: scale(0); transition: transform 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28); }
-        .stone.black { background: var(--black); transform: scale(1); }
-        .stone.white { background: var(--white); transform: scale(1); }
-
-        .controls { margin-top: 15px; display: flex; gap: 8px; }
-        button { padding: 8px 16px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .controls { display: flex; gap: 5px; padding: 5px; }
+        button { padding: 6px 12px; border-radius: 15px; border: none; background: var(--line-green); color: white; font-size: 12px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="header">
-        <div id="player-id" style="font-size:10px; color:#999">同步中...</div>
-        <div id="status">載入中</div>
+        <div id="player-id" style="font-size:10px; color:#999">正在識別身分...</div>
+        <div id="status">同步中</div>
     </div>
     
     <div class="board-container">
         <div class="board" id="board"></div>
     </div>
-    
-    <div class="controls">
-        <button onclick="Game.reset()">重設</button>
-        <button style="background:#999" onclick="liff.closeWindow()">離開</button>
+
+    <div class="chat-area">
+        <div id="chat-box"></div>
+        <div class="chat-input-row">
+            <input type="text" id="chat-input" placeholder="輸入訊息...">
+            <button onclick="Game.sendChat()" style="margin-left:5px">傳送</button>
+        </div>
+        <div class="controls">
+            <button onclick="Game.reset()" style="background:#ff4757">重設</button>
+            <button style="background:#999" onclick="liff.closeWindow()">離開</button>
+        </div>
     </div>
 
     <script>
@@ -61,70 +69,90 @@
         };
 
         const Game = {
-            size: 15,
-            db: null, myUID: null, myRole: null, data: null,
+            db: null, myUID: null, myName: "匿名", myRole: null, data: null,
 
             initUI() {
                 const boardEl = document.getElementById('board');
-                boardEl.innerHTML = '';
-                for (let i = 0; i < this.size * this.size; i++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'cell';
-                    cell.onclick = () => this.play(i);
-                    cell.innerHTML = '<div class="stone"></div>';
-                    boardEl.appendChild(cell);
+                for (let i = 0; i < 225; i++) {
+                    boardEl.innerHTML += `<div class="cell" onclick="Game.play(${i})"><div class="stone"></div></div>`;
                 }
-                const cache = localStorage.getItem('gomoku_cache');
+                // 本地快取恢復畫面
+                const cache = localStorage.getItem('gomoku_v31_cache');
                 if (cache) { this.data = JSON.parse(cache); this.render(); }
             },
 
             async connect() {
-                await liff.init({ liffId: LIFF_ID });
-                if (!liff.isLoggedIn()) { liff.login(); return; }
-                const profile = await liff.getProfile();
-                this.myUID = profile.userId;
+                try {
+                    await liff.init({ liffId: LIFF_ID });
+                    if (!liff.isLoggedIn()) { liff.login(); return; }
+                    const profile = await liff.getProfile();
+                    this.myUID = profile.userId;
+                    this.myName = profile.displayName;
 
-                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                this.db = firebase.database().ref('gomoku_stable_public');
+                    const context = liff.getContext();
+                    const roomId = context.groupId || context.roomId || this.myUID;
+                    
+                    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+                    this.db = firebase.database().ref('v31_rooms/' + roomId);
 
-                this.db.on('value', (snap) => {
-                    const cloudData = snap.val();
-                    if (cloudData) {
-                        this.data = cloudData;
-                        localStorage.setItem('gomoku_cache', JSON.stringify(cloudData));
-                        this.assignRole();
-                        this.render();
-                    } else {
-                        document.getElementById('status').innerText = "點擊開局";
-                    }
-                });
+                    this.db.on('value', (snap) => {
+                        const cloudData = snap.val();
+                        if (cloudData) {
+                            this.data = cloudData;
+                            localStorage.setItem('gomoku_v31_cache', JSON.stringify(cloudData));
+                            this.assignRole();
+                            this.render();
+                            this.renderChat();
+                        }
+                    });
+                } catch (e) { document.getElementById('status').innerText = "連線失敗"; }
             },
 
             assignRole() {
                 const d = this.data;
                 if (d.pB === this.myUID) this.myRole = "Black";
                 else if (d.pW === this.myUID) this.myRole = "White";
-                else if (!d.pB) { this.db.update({ pB: this.myUID }); this.myRole = "Black"; }
-                else if (!d.pW) { this.db.update({ pW: this.myUID }); this.myRole = "White"; }
+                else if (!d.pB) { this.db.update({ pB: this.myUID, pBName: this.myName }); this.myRole = "Black"; }
+                else if (!d.pW) { this.db.update({ pW: this.myUID, pWName: this.myName }); this.myRole = "White"; }
                 else this.myRole = "VIEW";
-                document.getElementById('player-id').innerText = "你執: " + (this.myRole === 'Black' ? '黑子' : (this.myRole === 'White' ? '白子' : '觀戰'));
+                
+                let roleTitle = this.myRole === 'Black' ? '黑子' : (this.myRole === 'White' ? '白子' : '觀戰');
+                document.getElementById('player-id').innerText = `身分: ${roleTitle} (${this.myName})`;
             },
 
             render() {
                 if (!this.data || !this.data.board) return;
-                const cells = document.querySelectorAll('.cell .stone');
+                const cells = document.querySelectorAll('.cell');
                 this.data.board.forEach((val, i) => {
-                    cells[i].className = 'stone' + (val ? ' ' + val.toLowerCase() : '');
+                    const stone = cells[i].querySelector('.stone');
+                    stone.className = 'stone' + (val ? ' ' + val.toLowerCase() : '');
+                    cells[i].classList.toggle('last-move', i === this.data.lastIdx);
                 });
                 document.getElementById('status').innerText = this.data.winner ? 
                     (this.data.winner === "TIE" ? "平手" : this.data.winner + "勝!") : 
                     `輪到: ${this.data.turn === 'Black' ? '黑子' : '白子'}`;
             },
 
+            renderChat() {
+                const box = document.getElementById('chat-box');
+                if (!this.data.chats) return;
+                box.innerHTML = this.data.chats.map(c => `<div><b>${c.u}:</b> ${c.m}</div>`).join('');
+                box.scrollTop = box.scrollHeight;
+            },
+
+            sendChat() {
+                const input = document.getElementById('chat-input');
+                if (!input.value.trim() || !this.db) return;
+                const chats = this.data.chats || [];
+                chats.push({ u: this.myName, m: input.value });
+                if (chats.length > 50) chats.shift(); // 限制50條
+                this.db.update({ chats: chats });
+                input.value = '';
+            },
+
             play(i) {
                 if (!this.data) {
-                    const emptyBoard = Array(225).fill("");
-                    this.db.set({ board: emptyBoard, turn: "Black", winner: null, pB: this.myUID });
+                    this.db.set({ board: Array(225).fill(""), turn: "Black", winner: null, pB: this.myUID, pBName: this.myName, lastIdx: -1 });
                     return;
                 }
                 if (this.myRole !== this.data.turn || this.data.board[i] || this.data.winner || this.myRole === "VIEW") return;
@@ -132,12 +160,7 @@
                 const newBoard = [...this.data.board];
                 newBoard[i] = this.myRole;
                 const winner = this.checkWin(newBoard, i);
-                
-                this.db.update({
-                    board: newBoard,
-                    turn: this.myRole === "Black" ? "White" : "Black",
-                    winner: winner
-                });
+                this.db.update({ board: newBoard, turn: this.myRole === "Black" ? "White" : "Black", winner: winner, lastIdx: i });
             },
 
             checkWin(b, idx) {
@@ -159,9 +182,8 @@
             },
 
             reset() {
-                if (confirm("確定要清空棋盤重新開始嗎？")) {
-                    localStorage.removeItem('gomoku_cache');
-                    this.db.set({ board: Array(225).fill(""), turn: "Black", winner: null, pB: this.myUID, pW: "" });
+                if (confirm("確定重設戰局？")) {
+                    this.db.update({ board: Array(225).fill(""), turn: "Black", winner: null, pB: "", pW: "", lastIdx: -1 });
                 }
             }
         };
