@@ -3,74 +3,83 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gomoku Social Scroll</title>
+    <title>Gomoku Transparent UI</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
     <style>
         :root { --black: #333; --white: #fff; --board-bg: #e3c193; --line-green: #06c755; }
         
-        /* 1. 改為允許滾動，移除視窗高度限制 */
         body { 
-            font-family: sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            margin: 0; 
-            background: #f0f0f0; 
-            min-height: 100vh; 
-            overflow-y: auto; /* 允許垂直滾動 */
-            -webkit-overflow-scrolling: touch;
+            font-family: sans-serif; display: flex; flex-direction: column; align-items: center; 
+            margin: 0; background: #f0f0f0; height: 100vh; overflow: hidden; 
         }
         
         .header { 
-            position: sticky; top: 0; width: 100%; padding: 5px 15px; 
-            background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
-            display: flex; justify-content: space-between; align-items: center; 
-            box-sizing: border-box; height: 40px; z-index: 100; 
+            width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+            display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 40px; z-index: 100; 
         }
         
-        #status { font-weight: bold; font-size: 14px; color: var(--line-green); }
+        /* 棋盤容器 */
+        .game-viewport {
+            position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; flex: 1;
+        }
 
-        .board-container { margin-top: 10px; padding: 5px; background: var(--board-bg); border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); border: 2px solid #b58d59; }
+        .board-container { 
+            margin-top: 10px; padding: 5px; background: var(--board-bg); border-radius: 4px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2); border: 2px solid #b58d59; z-index: 1;
+        }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
-        .cell { width: 6.2vw; height: 6.2vw; max-width: 25px; max-height: 25px; border: 0.5px solid #00000033; display: flex; align-items: center; justify-content: center; position: relative; }
+        .cell { width: 6.4vw; height: 6.4vw; max-width: 25px; max-height: 25px; border: 0.5px solid #00000022; display: flex; align-items: center; justify-content: center; position: relative; }
         .stone { width: 85%; height: 85%; border-radius: 50%; transform: scale(0); transition: 0.2s; }
         .stone.black { background: var(--black); transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
         .stone.white { background: var(--white); transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .last-move::after { content: ''; width: 6px; height: 6px; background: #ff4757; border-radius: 50%; position: absolute; z-index: 5; }
 
-        /* 2. 聊天區與操作介面優化 */
-        .chat-area { width: 95%; margin: 15px 0 30px 0; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        #chat-box { height: 180px; overflow-y: auto; padding: 10px; font-size: 12px; line-height: 1.5; color: #555; background: #fafafa; }
-        
-        .chat-input-row { display: flex; padding: 10px; border-top: 1px solid #eee; background: white; }
-        #chat-input { flex: 1; border: 1px solid #ddd; border-radius: 20px; padding: 8px 15px; outline: none; font-size: 14px; }
-        
-        .bottom-controls { display: flex; justify-content: space-around; padding: 10px; background: #eee; border-top: 1px solid #ddd; }
-        button { padding: 10px 20px; border-radius: 25px; border: none; background: var(--line-green); color: white; font-size: 14px; font-weight: bold; cursor: pointer; }
+        /* 半透明對話幕 */
+        .overlay-chat {
+            position: absolute; bottom: 80px; width: 92%; height: 120px;
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+            border-radius: 12px; border: 1px solid rgba(255,255,255,0.3);
+            display: flex; flex-direction: column; z-index: 10;
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.05);
+        }
+        #chat-box { flex: 1; overflow-y: auto; padding: 8px; font-size: 11px; color: #444; }
+        .chat-input-row { display: flex; padding: 5px 8px; border-top: 1px solid rgba(0,0,0,0.05); }
+        #chat-input { flex: 1; border: none; background: rgba(255,255,255,0.5); border-radius: 15px; padding: 4px 12px; font-size: 12px; outline: none; }
+
+        /* 底部按鈕列 */
+        .bottom-bar { 
+            width: 100%; padding: 10px; display: flex; justify-content: center; gap: 15px; 
+            background: white; border-top: 1px solid #ddd; z-index: 20;
+        }
+        button { padding: 8px 18px; border-radius: 20px; border: none; background: var(--line-green); color: white; font-size: 13px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="header">
-        <div id="player-id" style="font-size:10px; color:#999">識別身分...</div>
+        <div id="player-id" style="font-size:10px; color:#999">載入中...</div>
         <div id="status">同步中</div>
     </div>
     
-    <div class="board-container">
-        <div class="board" id="board"></div>
+    <div class="game-viewport">
+        <div class="board-container">
+            <div class="board" id="board"></div>
+        </div>
+
+        <div class="overlay-chat">
+            <div id="chat-box"></div>
+            <div class="chat-input-row">
+                <input type="text" id="chat-input" placeholder="按此聊天...">
+                <button onclick="Game.sendChat()" style="margin-left:5px; padding: 4px 10px; font-size:11px;">傳送</button>
+            </div>
+        </div>
     </div>
 
-    <div class="chat-area">
-        <div id="chat-box"></div>
-        <div class="chat-input-row">
-            <input type="text" id="chat-input" placeholder="說點什麼...">
-            <button onclick="Game.sendChat()" style="margin-left:8px">傳送</button>
-        </div>
-        <div class="bottom-controls">
-            <button onclick="Game.reset()" style="background:#ff4757">重設棋盤</button>
-            <button style="background:#999" onclick="liff.closeWindow()">離開遊戲</button>
-        </div>
+    <div class="bottom-bar">
+        <button onclick="Game.reset()" style="background:#ff4757">重設棋盤</button>
+        <button style="background:#999" onclick="liff.closeWindow()">離開</button>
     </div>
 
     <script>
@@ -93,7 +102,7 @@
                 for (let i = 0; i < 225; i++) {
                     boardEl.innerHTML += `<div class="cell" onclick="Game.play(${i})"><div class="stone"></div></div>`;
                 }
-                const cache = localStorage.getItem('gomoku_v32_cache');
+                const cache = localStorage.getItem('gomoku_v33_cache');
                 if (cache) { this.data = JSON.parse(cache); this.render(); }
             },
 
@@ -109,13 +118,13 @@
                     const roomId = context.groupId || context.roomId || this.myUID;
                     
                     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                    this.db = firebase.database().ref('v32_gomoku/' + roomId);
+                    this.db = firebase.database().ref('v33_gomoku/' + roomId);
 
                     this.db.on('value', (snap) => {
                         const cloudData = snap.val();
                         if (cloudData) {
                             this.data = cloudData;
-                            localStorage.setItem('gomoku_v32_cache', JSON.stringify(cloudData));
+                            localStorage.setItem('gomoku_v33_cache', JSON.stringify(cloudData));
                             this.assignRole();
                             this.render();
                             this.renderChat();
@@ -131,9 +140,7 @@
                 else if (!d.pB) { this.db.update({ pB: this.myUID, pBName: this.myName }); this.myRole = "Black"; }
                 else if (!d.pW) { this.db.update({ pW: this.myUID, pWName: this.myName }); this.myRole = "White"; }
                 else this.myRole = "VIEW";
-                
-                let roleTitle = this.myRole === 'Black' ? '黑子' : (this.myRole === 'White' ? '白子' : '觀戰');
-                document.getElementById('player-id').innerText = `${roleTitle}: ${this.myName}`;
+                document.getElementById('player-id').innerText = `${this.myRole === 'Black'?'黑子':'白子'}: ${this.myName}`;
             },
 
             render() {
@@ -144,15 +151,13 @@
                     stone.className = 'stone' + (val ? ' ' + val.toLowerCase() : '');
                     cells[i].classList.toggle('last-move', i === this.data.lastIdx);
                 });
-                document.getElementById('status').innerText = this.data.winner ? 
-                    (this.data.winner === "TIE" ? "平手" : this.data.winner + "勝!") : 
-                    `輪到: ${this.data.turn === 'Black' ? '黑子' : '白子'}`;
+                document.getElementById('status').innerText = this.data.winner ? (this.data.winner + "勝!") : `輪到: ${this.data.turn === 'Black'?'黑':'白'}`;
             },
 
             renderChat() {
                 const box = document.getElementById('chat-box');
                 if (!this.data.chats) return;
-                box.innerHTML = this.data.chats.map(c => `<div><span style="color:#06c755;font-weight:bold">${c.u}:</span> ${c.m}</div>`).join('');
+                box.innerHTML = this.data.chats.map(c => `<div><b style="color:var(--line-green)">${c.u}:</b> ${c.m}</div>`).join('');
                 box.scrollTop = box.scrollHeight;
             },
 
@@ -161,7 +166,7 @@
                 if (!input.value.trim() || !this.db) return;
                 const chats = this.data.chats || [];
                 chats.push({ u: this.myName, m: input.value });
-                if (chats.length > 50) chats.shift();
+                if (chats.length > 30) chats.shift();
                 this.db.update({ chats: chats });
                 input.value = '';
             },
@@ -175,7 +180,7 @@
                 const newBoard = [...this.data.board];
                 newBoard[i] = this.myRole;
                 const winner = this.checkWin(newBoard, i);
-                this.db.update({ board: newBoard, turn: this.myRole === "Black" ? "White" : "Black", winner: winner, lastIdx: i });
+                this.db.update({ board: newBoard, turn: this.myRole === "Black"?"White":"Black", winner: winner, lastIdx: i });
             },
 
             checkWin(b, idx) {
