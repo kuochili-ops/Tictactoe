@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gomoku Master v51</title>
+    <title>Gomoku Master v52</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
@@ -12,43 +12,47 @@
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: sans-serif; margin: 0; background: #f0f0f0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
         
+        /* 啟動選單 */
         #selector-overlay { position: fixed; inset: 0; background: white; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
-        .btn-main { background: #ccc; color: white; border: none; padding: 15px 30px; border-radius: 30px; font-size: 18px; font-weight: bold; width: 80%; cursor: pointer; transition: 0.3s; }
+        .btn-main { background: #ccc; color: white; border: none; padding: 18px 35px; border-radius: 35px; font-size: 20px; font-weight: bold; width: 85%; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
 
-        .header { height: 50px; padding: 0 15px; background: white; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-        .game-main { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; background: #bbb; position: relative; }
-        .board-container { position: relative; padding: 6px; background: var(--board-bg); border: 3px solid #b58d59; border-radius: 4px; }
+        /* 遊戲介面 */
+        .header { height: 60px; padding: 0 20px; background: white; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .game-main { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; background: #ccc; position: relative; }
+        .board-container { position: relative; padding: 8px; background: var(--board-bg); border: 4px solid #b58d59; border-radius: 5px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
-        .cell { width: 6.5vw; height: 6.5vw; max-width: 35px; max-height: 35px; border: 0.5px solid #00000015; display: flex; align-items: center; justify-content: center; position: relative; }
-        .stone { width: 90%; height: 90%; border-radius: 50%; transform: scale(0); transition: 0.1s; z-index: 5; }
-        .stone.black { background: var(--black); transform: scale(1); }
-        .stone.white { background: #fff; transform: scale(1); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .cell { width: 6.2vw; height: 6.2vw; max-width: 40px; max-height: 40px; border: 0.5px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; position: relative; }
+        
+        /* 棋子樣式 */
+        .stone { width: 92%; height: 92%; border-radius: 50%; transform: scale(0); transition: 0.15s cubic-bezier(0.18, 0.89, 0.32, 1.28); z-index: 5; }
+        .stone.black { background: var(--black); transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+        .stone.white { background: #fff; transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .last-move::after { content: ''; width: 8px; height: 8px; background: #ff4757; border-radius: 50%; position: absolute; z-index: 10; }
 
-        #chat-overlay { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); width: 85%; pointer-events: none; z-index: 50; display: flex; flex-direction: column; gap: 4px; }
-        .chat-msg { background: rgba(255, 255, 255, 0.75); backdrop-filter: blur(4px); border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: bold; width: fit-content; }
-        
-        .entry-banner { position: fixed; top: 0; left: 0; right: 0; background: var(--line-green); color: white; padding: 12px; text-align: center; font-weight: bold; transform: translateY(-100%); transition: 0.4s; z-index: 3000; }
+        /* 訊息與通知 */
+        #chat-overlay { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 85%; pointer-events: none; z-index: 50; display: flex; flex-direction: column; gap: 6px; }
+        .chat-msg { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(5px); border-radius: 10px; padding: 6px 15px; font-size: 13px; font-weight: bold; width: fit-content; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .entry-banner { position: fixed; top: 0; left: 0; right: 0; background: var(--line-green); color: white; padding: 15px; text-align: center; font-weight: bold; transform: translateY(-100%); transition: 0.5s; z-index: 3000; font-size: 16px; }
     </style>
 </head>
 <body>
-    <div id="entry-banner" class="entry-banner">對手已進入！</div>
+    <div id="entry-banner" class="entry-banner">🎮 對手已進入棋室！</div>
 
     <div id="selector-overlay">
-        <h2 style="color:var(--line-green)">⚔️ 五子棋開局</h2>
-        <p id="status-text" style="color:#666; font-size:14px; margin-bottom:30px;">正在偵測 LINE 權限...</p>
+        <h2 style="color:var(--line-green); font-size: 28px;">五子棋開局</h2>
+        <p id="status-text" style="color:#666; font-size:15px; margin-bottom:40px; line-height: 1.6;">正在偵測權限...<br>請確認後台 Size 已改為 Full</p>
         <button id="invite-btn" onclick="Game.sendInvite()" class="btn-main">選擇好友並挑戰</button>
-        <button onclick="Game.enterPublic()" style="margin-top:20px; background:none; border:none; color:#999; text-decoration:underline;">進入公共大廳</button>
+        <button onclick="Game.enterPublic()" style="margin-top:25px; background:none; border:none; color:#bbb; text-decoration:underline; font-size: 14px;">進入測試大廳</button>
     </div>
 
     <div class="header">
-        <div id="room-info" style="font-size:11px; color:#999">連線中...</div>
-        <div id="game-turn" style="font-weight:bold; color:var(--line-green)">載入中</div>
+        <div id="room-info" style="font-size:12px; color:#888; letter-spacing: 0.5px;">ROOM: 載入中</div>
+        <div id="game-turn" style="font-weight:bold; color:var(--line-green); font-size: 18px;">連線中...</div>
     </div>
 
     <div class="game-main">
         <div class="board-container">
-            <div class="board" id="board"></div>
+            <div id="board" class="board"></div>
             <div id="chat-overlay"></div>
         </div>
     </div>
@@ -64,7 +68,7 @@
         };
 
         const Game = {
-            db: null, myUID: null, myName: "玩家", roomID: null, notified: false,
+            db: null, myUID: null, myName: "Player", roomID: null, notified: false,
 
             async init() {
                 const b = document.getElementById('board');
@@ -85,10 +89,11 @@
                 this.roomID = ctx.groupId || ctx.roomId || ctx.utouId || "P_" + this.myUID;
 
                 if (liff.isApiAvailable('shareTargetPicker')) {
-                    document.getElementById('status-text').innerHTML = "✅ 環境檢測正常";
+                    document.getElementById('status-text').innerHTML = "✅ 環境檢測正常<br>您可以挑選好友進行對弈了";
                     document.getElementById('invite-btn').style.background = "#06c755";
+                    document.getElementById('invite-btn').style.boxShadow = "0 4px 15px rgba(6,199,85,0.3)";
                 } else {
-                    document.getElementById('status-text').innerHTML = "❌ 權限未生效<br>請在後台將 Size 改為 Full";
+                    document.getElementById('status-text').innerHTML = "❌ 權限未生效<br>請將後台 Size 改為 Full 並重啟 LINE";
                 }
 
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -100,14 +105,14 @@
                 try {
                     const res = await liff.shareTargetPicker([{
                         type: "flex",
-                        altText: this.myName + " 邀請你下棋",
+                        altText: this.myName + " 邀請你進行五子棋對決！",
                         contents: {
                             "type": "bubble",
                             "body": {
                                 "type": "box", "layout": "vertical",
                                 "contents": [
-                                    {"type": "text", "text": "⚔️ 五子棋戰局", "weight": "bold", "color": "#06c755"},
-                                    {"type": "text", "text": this.myName + " 已就位，點擊按鈕應戰！", "size": "sm", "wrap": true}
+                                    {"type": "text", "text": "⚔️ 五子棋挑戰狀", "weight": "bold", "size": "xl", "color": "#06c755"},
+                                    {"type": "text", "text": this.myName + " 已在棋室等候，點擊按鈕應戰！", "margin": "md", "size": "sm", "wrap": true, "color": "#666666"}
                                 ]
                             },
                             "footer": {
@@ -121,7 +126,7 @@
                         }
                     }]);
                     if (res) document.getElementById('selector-overlay').style.display = 'none';
-                } catch (e) { alert("發送失敗，請重試"); }
+                } catch (e) { alert("發送失敗，請確保在 LINE 內開啟"); }
             },
 
             enterPublic() {
@@ -131,8 +136,8 @@
             },
 
             connectFirebase() {
-                this.db = firebase.database().ref('v51/' + this.roomID);
-                document.getElementById('room-info').innerText = "房號: " + this.roomID.substring(0, 8);
+                this.db = firebase.database().ref('v52/' + this.roomID);
+                document.getElementById('room-info').innerText = "ROOM ID: " + this.roomID.substring(0, 12);
                 this.db.on('value', snap => {
                     this.data = snap.val();
                     if (!this.data) {
@@ -140,10 +145,10 @@
                     } else {
                         if (this.myUID === this.data.pB && !this.notified && this.data.pW) {
                             this.notified = true;
-                            const b = document.getElementById('entry-banner');
-                            b.innerText = `🎮 ${this.data.pWName} 已進入！`;
-                            b.style.transform = 'translateY(0)';
-                            setTimeout(() => b.style.transform = 'translateY(-100%)', 3000);
+                            const banner = document.getElementById('entry-banner');
+                            banner.innerText = `🎮 ${this.data.pWName} 已進入！對局開始`;
+                            banner.style.transform = 'translateY(0)';
+                            setTimeout(() => banner.style.transform = 'translateY(-100%)', 4000);
                         }
                         this.render();
                     }
@@ -156,7 +161,7 @@
                     cells[i].querySelector('.stone').className = 'stone' + (v ? ' ' + v.toLowerCase() : '');
                     cells[i].classList.toggle('last-move', i === this.data.lastIdx);
                 });
-                document.getElementById('game-turn').innerText = this.data.winner ? (this.data.winner + "勝!") : (this.data.turn === 'Black' ? "黑棋回合" : "白棋回合");
+                document.getElementById('game-turn').innerText = this.data.winner ? (this.data.winner + "勝!") : (this.data.turn === 'Black' ? "⚫ 黑棋回合" : "⚪ 白棋回合");
             },
 
             play(i) {
