@@ -3,15 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gomoku Persistence v40</title>
+    <title>Gomoku Lobby v41</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
     <style>
         :root { --black: #333; --white: #fff; --board-bg: #e3c193; --line-green: #06c755; }
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f0f0f0; min-height: 100vh; overflow-x: hidden; }
-        .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 50px; z-index: 100; position: sticky; top: 0; }
-        #room-id-tag { font-size: 10px; color: #fff; background: var(--line-green); padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; background: #f0f0f0; min-height: 100vh; overflow: hidden; }
+        
+        /* 選單樣式 Header */
+        .header { width: 100%; padding: 5px 15px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; box-sizing: border-box; height: 55px; z-index: 100; }
+        .room-selector-wrap { display: flex; flex-direction: column; flex: 1; }
+        #room-select { 
+            width: 140px; padding: 4px; border-radius: 6px; border: 1px solid #ddd; 
+            font-size: 13px; font-weight: bold; background: #f9f9f9; outline: none;
+        }
+        
         .game-main { width: 100%; display: flex; flex-direction: column; align-items: center; padding: 10px 0; flex: 1; }
         .board-container { position: relative; padding: 5px; background: var(--board-bg); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 2px solid #b58d59; }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
@@ -20,8 +27,11 @@
         .stone.black { background: var(--black); transform: scale(1); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
         .stone.white { background: var(--white); transform: scale(1); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
         .last-move::after { content: ''; width: 6px; height: 6px; background: #ff4757; border-radius: 50%; position: absolute; z-index: 10; }
+
+        /* 穿透式訊息流 */
         #chat-display { position: absolute; bottom: 8px; left: 8px; right: 8px; height: 75px; pointer-events: none; z-index: 20; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; }
         .chat-msg { background: rgba(255, 255, 255, 0.45); border-radius: 4px; padding: 2px 6px; margin-bottom: 2px; font-size: 11px; width: fit-content; max-width: 90%; color: #222; font-weight: bold; }
+
         .bottom-panel { width: 100%; background: white; border-top: 1px solid #ddd; padding: 10px 15px 35px 15px; box-sizing: border-box; }
         .input-group { display: flex; gap: 8px; margin-bottom: 12px; }
         #chat-input { flex: 1; border: 1px solid #ccc; border-radius: 20px; padding: 8px 15px; font-size: 14px; outline: none; }
@@ -31,11 +41,17 @@
 </head>
 <body>
     <div class="header">
-        <div style="display:flex; flex-direction:column">
-            <span id="player-status" style="font-size:12px; font-weight:bold;">同步中...</span>
-            <span id="room-id-tag">偵測聊天室中</span>
+        <div class="room-selector-wrap">
+            <span id="player-status" style="font-size:11px; color:#666">載入中...</span>
+            <select id="room-select" onchange="Game.switchRoom(this.value)">
+                <option value="auto">偵測聊天室...</option>
+                <option value="Lobby_Public">公共大廳</option>
+                <option value="Room_Vip_1">私人房 1</option>
+                <option value="Room_Vip_2">私人房 2</option>
+                <option value="Room_Vip_3">私人房 3</option>
+            </select>
         </div>
-        <div id="game-turn" style="font-weight:bold; color:var(--line-green)">載入紀錄...</div>
+        <div id="game-turn" style="font-weight:bold; color:var(--line-green); text-align:right">同步中</div>
     </div>
 
     <div class="game-main">
@@ -47,12 +63,12 @@
 
     <div class="bottom-panel">
         <div class="input-group">
-            <input type="text" id="chat-input" placeholder="傳送即時訊息...">
+            <input type="text" id="chat-input" placeholder="說點什麼...">
             <button style="background:var(--black); width:70px" onclick="Game.sendChat()">傳送</button>
         </div>
         <div class="btn-group">
-            <button onclick="Game.reset()" style="background:#ff4757">重新開局</button>
-            <button onclick="liff.closeWindow()" style="background:#999">關閉遊戲</button>
+            <button onclick="Game.reset()" style="background:#ff4757">清空棋盤</button>
+            <button onclick="liff.closeWindow()" style="background:#999">離開</button>
         </div>
     </div>
 
@@ -69,7 +85,8 @@
         };
 
         const Game = {
-            db: null, myUID: null, myName: "玩家", myRole: null, data: null, currentRoom: null,
+            db: null, myUID: null, myName: "玩家", myRole: null, data: null, 
+            autoRoomID: null, currentPath: null,
 
             async init() {
                 const boardEl = document.getElementById('board');
@@ -89,37 +106,40 @@
                     this.myName = profile.displayName;
 
                     const context = liff.getContext();
-                    // [修正重點] 強制 ID 優先級，並加上標記區分環境
-                    if (context.groupId) this.currentRoom = "G_" + context.groupId;
-                    else if (context.roomId) this.currentRoom = "R_" + context.roomId;
-                    else if (context.utouId) this.currentRoom = "U_" + context.utouId;
-                    else this.currentRoom = "P_" + this.myUID;
-
-                    document.getElementById('room-id-tag').innerText = "ID: " + this.currentRoom.substring(0, 15);
-
+                    this.autoRoomID = context.groupId || context.roomId || context.utouId || "P_" + this.myUID;
+                    
+                    // 更新選單中的「自動偵測」文字
+                    const opt = document.querySelector('option[value="auto"]');
+                    opt.text = "群組專屬房";
+                    opt.value = "Group_" + this.autoRoomID;
+                    
                     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                    // [修正重點] 使用專門的穩定節點路徑
-                    this.db = firebase.database().ref('v40_stable_match/' + this.currentRoom);
+                    this.switchRoom(opt.value);
+                } catch (e) { document.getElementById('game-turn').innerText = "連線失敗"; }
+            },
 
-                    this.db.on('value', snap => {
-                        const cloudData = snap.val();
-                        if (cloudData) {
-                            this.data = cloudData;
-                            this.assignRole();
-                            this.render();
-                        } else {
-                            // 僅在完全無紀錄時建立新戰局
-                            this.db.set({ 
-                                board: Array(225).fill(""), 
-                                turn: "Black", 
-                                pB: this.myUID, 
-                                pBName: this.myName,
-                                lastIdx: -1,
-                                lastUpdate: Date.now()
-                            });
-                        }
-                    });
-                } catch (e) { document.getElementById('game-turn').innerText = "環境異常"; }
+            switchRoom(path) {
+                if (this.db) this.db.off(); // 卸載舊房間監聽
+                this.currentPath = path;
+                this.db = firebase.database().ref('v41_lobby/' + path);
+                
+                document.getElementById('game-turn').innerText = "切換中...";
+                
+                this.db.on('value', snap => {
+                    const cloudData = snap.val();
+                    if (cloudData) {
+                        this.data = cloudData;
+                        this.assignRole();
+                        this.render();
+                    } else {
+                        // 初始化空房間
+                        this.db.set({ 
+                            board: Array(225).fill(""), turn: "Black", 
+                            pB: this.myUID, pBName: this.myName,
+                            lastIdx: -1
+                        });
+                    }
+                });
             },
 
             assignRole() {
@@ -130,8 +150,8 @@
                 else if (!d.pW) { this.db.update({ pW: this.myUID, pWName: this.myName }); this.myRole = "White"; }
                 else this.myRole = "VIEW";
                 
-                const roleIcon = this.myRole === 'Black' ? '⚫' : (this.myRole === 'White' ? '⚪' : '👀');
-                document.getElementById('player-status').innerText = `${roleIcon} ${this.myName}`;
+                const icon = this.myRole === 'Black' ? '⚫' : (this.myRole === 'White' ? '⚪' : '👀');
+                document.getElementById('player-status').innerText = `${icon} ${this.myName}`;
             },
 
             render() {
@@ -142,7 +162,7 @@
                     cells[i].classList.toggle('last-move', i === this.data.lastIdx);
                 });
                 document.getElementById('game-turn').innerText = this.data.winner ? 
-                    (this.data.winner + "勝!") : (this.data.turn === 'Black' ? "黑棋回合" : "白棋回合");
+                    (this.data.winner + "勝!") : (this.data.turn === 'Black' ? "黑方落子" : "白方落子");
                 
                 const chatBox = document.getElementById('chat-display');
                 if (this.data.chats) {
@@ -155,13 +175,7 @@
                 const newBoard = [...this.data.board];
                 newBoard[i] = this.myRole;
                 const winner = this.checkWin(newBoard, i);
-                this.db.update({ 
-                    board: newBoard, 
-                    turn: this.myRole === "Black" ? "White" : "Black", 
-                    lastIdx: i, 
-                    winner: winner,
-                    lastUpdate: Date.now()
-                });
+                this.db.update({ board: newBoard, turn: this.myRole === "Black" ? "White" : "Black", lastIdx: i, winner: winner });
             },
 
             checkWin(b, idx) {
@@ -185,20 +199,16 @@
                 if (!input.value.trim()) return;
                 const chats = this.data.chats || [];
                 chats.push({ u: this.myName, m: input.value });
-                if (chats.length > 20) chats.shift();
+                if (chats.length > 15) chats.shift();
                 this.db.update({ chats });
                 input.value = '';
             },
 
             reset() {
-                if (confirm("重新開局將清空目前紀錄，確定？")) {
+                if (confirm("要重設這個房間的棋盤嗎？")) {
                     this.db.set({ 
-                        board: Array(225).fill(""), 
-                        turn: "Black", 
-                        pB: this.myUID, 
-                        pBName: this.myName,
-                        lastIdx: -1,
-                        lastUpdate: Date.now()
+                        board: Array(225).fill(""), turn: "Black", 
+                        pB: this.myUID, pBName: this.myName, lastIdx: -1 
                     });
                 }
             }
