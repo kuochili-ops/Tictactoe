@@ -3,63 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gomoku Master v59</title>
+    <title>Gomoku Master v61</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
     <style>
         :root { --line-green: #06c755; --black: #333; --board-bg: #e3c193; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: sans-serif; margin: 0; background: #222; height: 100vh; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; }
+        body { font-family: sans-serif; margin: 0; background: #222; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* 遮罩樣式 */
-        #setup-screen { position: fixed; inset: 0; background: white; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
-        .btn-main { background: var(--line-green); color: white; border: none; padding: 18px; border-radius: 35px; font-size: 20px; font-weight: bold; width: 85%; cursor: pointer; }
-        #loading-text { color: var(--line-green); font-weight: bold; margin-top: 15px; }
+        .header { height: 50px; padding: 0 15px; background: #fff; display: flex; justify-content: space-between; align-items: center; z-index: 100; border-bottom: 2px solid var(--line-green); }
+        #game-turn { font-weight: bold; color: var(--line-green); font-size: 16px; }
 
-        .header { height: 60px; padding: 0 15px; background: #fff; display: flex; justify-content: space-between; align-items: center; z-index: 100; }
-        #game-turn { font-weight: bold; color: var(--line-green); font-size: 18px; }
-        
-        .game-main { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
-        .board-container { position: relative; padding: 5px; background: var(--board-bg); border: 4px solid #b58d59; border-radius: 5px; }
+        .game-main { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; padding: 10px; }
+        .board-container { position: relative; padding: 5px; background: var(--board-bg); border: 4px solid #b58d59; border-radius: 5px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
         .cell { width: 6.2vw; height: 6.2vw; max-width: 40px; max-height: 40px; border: 0.5px solid rgba(0,0,0,0.1); position: relative; }
-        .stone { width: 90%; height: 90%; border-radius: 50%; transform: scale(0); transition: 0.1s; position: absolute; top:5%; left:5%; }
+        .stone { width: 90%; height: 90%; border-radius: 50%; transform: scale(0); transition: 0.15s cubic-bezier(0.18, 0.89, 0.32, 1.28); position: absolute; top:5%; left:5%; }
         .stone.black { background: var(--black); transform: scale(1); }
         .stone.white { background: #fff; transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .last-move::after { content: ''; width: 8px; height: 8px; background: #ff4757; border-radius: 50%; position: absolute; top:50%; left:50%; transform: translate(-50%, -50%); z-index: 10; border: 1px solid white; }
 
-        #chat-overlay { position: absolute; bottom: 20px; left: 15px; right: 15px; pointer-events: none; z-index: 500; display: flex; flex-direction: column; gap: 5px; }
-        .chat-msg { background: rgba(0,0,0,0.7); color: white; border-radius: 8px; padding: 6px 12px; font-size: 13px; width: fit-content; }
+        /* 💬 對話區域 */
+        #chat-area { height: 120px; background: rgba(255,255,255,0.05); display: flex; flex-direction: column; }
+        #chat-msgs { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #ddd; }
+        .msg-line { animation: fadeIn 0.3s; }
+        .msg-sys { color: #ff9f43; font-style: italic; }
+        .chat-input-box { display: flex; padding: 8px; background: #333; gap: 8px; }
+        #chat-input { flex: 1; background: #444; border: none; border-radius: 20px; color: white; padding: 6px 15px; outline: none; }
+        .btn-send { background: var(--line-green); color: white; border: none; padding: 5px 15px; border-radius: 20px; font-weight: bold; }
+
+        /* 💥 勝負動畫層 */
+        #result-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.8); display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .result-text { font-size: 100px; font-weight: bold; }
+        .win-style { color: #ffdf00; text-shadow: 0 0 20px #ff4500; animation: bounce 1s infinite; }
+        .lose-style { color: #777; animation: fallDown 1.8s forwards; transform-origin: bottom right; }
+        .result-menu { background: white; padding: 20px; border-radius: 20px; text-align: center; width: 260px; margin-top: 40px; }
+        .btn-res { width: 100%; padding: 12px; margin: 5px 0; border-radius: 25px; border: none; font-weight: bold; }
+        .btn-new { background: var(--line-green); color: white; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        @keyframes fallDown { 0% { transform: rotate(0deg); } 40% { transform: rotate(15deg); } 100% { transform: rotate(90deg) translateY(100px); opacity: 0; } }
+
+        #setup-screen { position: fixed; inset: 0; background: white; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
     </style>
 </head>
 <body>
     <div id="setup-screen">
-        <h2 style="color:var(--line-green);">五子棋戰局</h2>
-        <div id="setup-controls">
-            <p style="color:#888; margin-bottom: 30px;">您目前不在棋局中<br>請發起邀請或進入大廳</p>
-            <button onclick="Game.sendInvite()" class="btn-main">邀請好友對戰</button>
+        <h2 style="color:var(--line-green);">五子棋 Master v61</h2>
+        <p style="color:#888; margin-bottom: 20px;">發送邀請後，第一位點進的人將成為對手</p>
+        <button onclick="Game.sendInvite()" style="background:var(--line-green); color:white; border:none; padding:18px; border-radius:35px; width:85%; font-size:20px; font-weight:bold;">發起挑戰</button>
+    </div>
+
+    <div id="result-overlay">
+        <div id="status-char" class="result-text"></div>
+        <div class="result-menu">
+            <h3 id="result-title">對局結束</h3>
+            <button class="btn-res btn-new" onclick="Game.resetGame()">開啟新局</button>
+            <button class="btn-res" style="background:#eee" onclick="liff.closeWindow()">離開</button>
         </div>
-        <div id="loading-text" style="display:none;">正在進入好友的棋室...</div>
     </div>
 
     <div class="header">
-        <div>
-            <div id="game-turn">連線中...</div>
-            <div id="room-info" style="font-size:10px; color:#999">ROOM: ---</div>
-        </div>
-        <button style="padding:5px 10px; background:#eee; border:1px solid #ccc; border-radius:5px;" onclick="Game.resetGame()">重置棋盤</button>
+        <div id="game-turn">正在載入...</div>
+        <div id="role-info" style="font-size:11px; color:#666">身份: ---</div>
     </div>
 
     <div class="game-main">
         <div class="board-container">
             <div id="board" class="board"></div>
-            <div id="chat-overlay"></div>
+        </div>
+    </div>
+
+    <div id="chat-area">
+        <div id="chat-msgs"></div>
+        <div class="chat-input-box">
+            <input type="text" id="chat-input" placeholder="輸入訊息..." onkeypress="if(event.keyCode==13) Game.sendChat()">
+            <button class="btn-send" onclick="Game.sendChat()">送出</button>
         </div>
     </div>
 
     <script>
-        const LIFF_ID = "2009222789-QB82euV3";
+        const LIFF_ID = "2009222789-QB82euV3"; // 請確保這是正確的 ID
         const firebaseConfig = {
             apiKey: "AIzaSyAL9O0RLLY-Ce4GdwFPCAr9lglm-EhWFjs",
             authDomain: "tictactoe-305fa.firebaseapp.com",
@@ -69,10 +96,9 @@
         };
 
         const Game = {
-            db: null, myUID: null, myName: "玩家", roomID: null, data: null,
-            
+            db: null, myUID: null, myName: "玩家", roomID: null, data: null, myRole: null,
+
             async init() {
-                // 1. 繪製棋盤
                 const b = document.getElementById('board');
                 for(let i=0; i<225; i++) {
                     let c = document.createElement('div');
@@ -80,70 +106,73 @@
                     c.innerHTML = '<div class="stone"></div>'; b.appendChild(c);
                 }
 
-                // 2. 初始化 LIFF
                 await liff.init({ liffId: LIFF_ID });
                 if (!liff.isLoggedIn()) { liff.login(); return; }
-                
                 const p = await liff.getProfile();
                 this.myUID = p.userId;
                 this.myName = p.displayName;
 
-                // 🌟 關鍵邏輯：檢查網址是否有指定 RoomID (來自好友邀請)
                 const urlParams = new URLSearchParams(window.location.search);
-                const targetRoom = urlParams.get('room');
-
-                if (targetRoom) {
-                    // 如果網址有 room 參數，直接進入該棋室
-                    this.roomID = targetRoom;
-                    document.getElementById('setup-controls').style.display = 'none';
-                    document.getElementById('loading-text').style.display = 'block';
-                    setTimeout(() => document.getElementById('setup-screen').style.display = 'none', 1500);
-                } else {
-                    // 如果沒有參數，預設使用自己的 UID 作為 RoomID
-                    const ctx = liff.getContext();
-                    this.roomID = ctx.groupId || ctx.roomId || ctx.utouId || "R_" + this.myUID;
-                }
+                this.roomID = urlParams.get('room') || "R_" + this.myUID;
+                if (urlParams.get('room')) document.getElementById('setup-screen').style.display = 'none';
 
                 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
                 this.connectFirebase();
             },
 
             async sendInvite() {
-                // 發送邀請時，將「自己的 RoomID」帶在網址參數裡
                 const inviteURL = "https://liff.line.me/" + LIFF_ID + "?room=" + this.roomID;
-                try {
-                    await liff.shareTargetPicker([{
-                        type: "flex", altText: this.myName + " 邀請你下五子棋",
-                        contents: {
-                            "type": "bubble",
-                            "body": { "type": "box", "layout": "vertical", "contents": [{"type": "text", "text": "⚔️ 戰局已開啟", "weight": "bold", "color": "#06c755", "size": "xl"}] },
-                            "footer": { "type": "box", "layout": "vertical", "contents": [{"type": "button", "action": {"type": "uri", "label": "進入棋室應戰", "uri": inviteURL}, "style": "primary", "color": "#06c755"}] }
-                        }
-                    }]);
-                    document.getElementById('setup-screen').style.display = 'none';
-                } catch (e) { alert("請確保後台已開啟 shareTargetPicker"); }
+                await liff.shareTargetPicker([{
+                    type: "flex", altText: this.myName + " 發起五子棋戰局",
+                    contents: { "type": "bubble", "body": { "type": "box", "layout": "vertical", "contents": [{"type": "text", "text": "⚔️ 誰敢應戰？", "color": "#06c755", "size": "xl"}] }, "footer": { "type": "box", "layout": "vertical", "contents": [{"type": "button", "action": {"type": "uri", "label": "進入棋室", "uri": inviteURL}, "style": "primary", "color": "#06c755"}] } }
+                }]);
+                document.getElementById('setup-screen').style.display = 'none';
             },
 
             connectFirebase() {
-                this.db = firebase.database().ref('v59/' + this.roomID);
-                document.getElementById('room-info').innerText = "ROOM: " + this.roomID.substring(0, 8);
+                this.db = firebase.database().ref('v61/' + this.roomID);
                 this.db.on('value', snap => {
+                    const oldData = this.data;
                     this.data = snap.val();
                     if (!this.data) {
-                        this.db.set({ board: Array(225).fill(""), turn: "Black", pB: this.myUID, pBName: this.myName, lastIdx: -1 });
+                        const firstTurn = Math.random() > 0.5 ? "Black" : "White";
+                        this.db.set({ board: Array(225).fill(""), turn: firstTurn, pB: this.myUID, pBName: this.myName, lastIdx: -1 });
                     } else {
+                        // 判斷身份
+                        if (this.myUID === this.data.pB) this.myRole = "Black";
+                        else if (this.myUID === this.data.pW) this.myRole = "White";
+                        else if (!this.data.pW) {
+                            // 關鍵：如果白方沒人，第一個進來的人自動補位
+                            this.db.update({ pW: this.myUID, pWName: this.myName });
+                            this.myRole = "White";
+                            this.sysMsg("🤝 對手 " + this.myName + " 加入戰局");
+                        } else {
+                            this.myRole = "Viewer";
+                        }
                         this.render();
                     }
                 });
+
+                // 監聽對話
+                this.db.child('chats').limitToLast(10).on('child_added', snap => {
+                    const c = snap.val();
+                    const line = document.createElement('div');
+                    line.className = 'msg-line' + (c.sys ? ' msg-sys' : '');
+                    line.innerHTML = `<b>${c.name}:</b> ${c.msg}`;
+                    const container = document.getElementById('chat-msgs');
+                    container.appendChild(line);
+                    container.scrollTop = container.scrollHeight;
+                });
             },
 
-            log(txt) {
-                const container = document.getElementById('chat-overlay');
-                const m = document.createElement('div');
-                m.className = 'chat-msg'; m.innerText = txt;
-                container.appendChild(m);
-                setTimeout(() => m.remove(), 3000);
+            sendChat() {
+                const input = document.getElementById('chat-input');
+                if (!input.value.trim()) return;
+                this.db.child('chats').push({ name: this.myName, msg: input.value, sys: false });
+                input.value = '';
             },
+
+            sysMsg(txt) { this.db.child('chats').push({ name: "系統", msg: txt, sys: true }); },
 
             render() {
                 const cells = document.querySelectorAll('.cell');
@@ -151,28 +180,61 @@
                     cells[i].querySelector('.stone').className = 'stone' + (v ? ' ' + v.toLowerCase() : '');
                     cells[i].classList.toggle('last-move', i === this.data.lastIdx);
                 });
-                document.getElementById('game-turn').innerText = this.data.winner ? (this.data.winner + " 勝!") : (this.data.turn === "Black" ? "⚫ 黑方回合" : "⚪ 白方回合");
+
+                document.getElementById('role-info').innerText = "身份: " + (this.myRole === "Black" ? "黑棋" : this.myRole === "White" ? "白棋" : "觀戰");
+                
+                if (this.data.winner) {
+                    const overlay = document.getElementById('result-overlay');
+                    const charEl = document.getElementById('status-char');
+                    overlay.style.display = 'flex';
+                    if (this.myRole === this.data.winner) {
+                        charEl.innerText = "勝"; charEl.className = "result-text win-style";
+                        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                    } else if (this.myRole !== "Viewer") {
+                        charEl.innerText = "負"; charEl.className = "result-text lose-style";
+                    } else {
+                        charEl.innerText = this.data.winner === "Black" ? "黑勝" : "白勝";
+                        charEl.className = "result-text win-style";
+                    }
+                } else {
+                    document.getElementById('result-overlay').style.display = 'none';
+                    document.getElementById('game-turn').innerText = this.data.turn === "Black" ? "⚫ 黑子回合" : "⚪ 白子回合";
+                }
             },
 
             play(i) {
-                if (!this.data || this.data.winner || this.data.board[i]) return;
-                
-                let role = (this.myUID === this.data.pB) ? "Black" : "White";
-                
-                // 如果你是第二個進來的，且白方還沒人，你就是白方
-                if (!this.data.pW && this.myUID !== this.data.pB) {
-                    this.db.update({ pW: this.myUID, pWName: this.myName });
-                    role = "White";
-                }
-
-                if (role !== this.data.turn) { this.log("⚠️ 不是你的回合"); return; }
-
+                if (!this.data || this.data.winner || this.data.board[i] || this.myRole !== this.data.turn) return;
                 const b = [...this.data.board];
-                b[i] = role;
-                this.db.update({ board: b, turn: role === "Black" ? "White" : "Black", lastIdx: i });
+                b[i] = this.myRole;
+                if (this.checkWin(b, i, this.myRole)) {
+                    this.db.update({ board: b, lastIdx: i, winner: this.myRole });
+                    this.sysMsg("🏆 遊戲結束，" + (this.myRole === "Black" ? "黑棋" : "白棋") + "獲勝！");
+                } else {
+                    this.db.update({ board: b, turn: this.myRole === "Black" ? "White" : "Black", lastIdx: i });
+                }
             },
 
-            resetGame() { if(confirm("重開？")) this.db.update({ board: Array(225).fill(""), turn: "Black", lastIdx: -1, winner: null }); }
+            checkWin(b, idx, color) {
+                const r = Math.floor(idx/15), c = idx%15;
+                const dirs = [[1,0],[0,1],[1,1],[1,-1]];
+                for(let [dr, dc] of dirs) {
+                    let cnt = 1;
+                    for(let s of [1,-1]) {
+                        let currR = r + dr*s, currC = c + dc*s;
+                        while(currR>=0 && currR<15 && currC>=0 && currC<15 && b[currR*15+currC] === color) {
+                            cnt++; currR += dr*s; currC += dc*s;
+                        }
+                    }
+                    if(cnt>=5) return true;
+                }
+                return false;
+            },
+
+            resetGame() {
+                const nextTurn = Math.random() > 0.5 ? "Black" : "White";
+                this.db.update({ board: Array(225).fill(""), turn: nextTurn, lastIdx: -1, winner: null });
+                this.sysMsg("🔄 新局開始，系統隨機決定先手。");
+            }
         };
         Game.init();
     </script>
