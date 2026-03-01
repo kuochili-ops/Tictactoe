@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gomoku Master v62</title>
+    <title>Gomoku Master v63</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
@@ -13,9 +13,11 @@
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: sans-serif; margin: 0; background: #222; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
         
-        /* 介面佈局 */
+        /* Header */
         .header { height: 50px; padding: 0 15px; background: #fff; display: flex; justify-content: space-between; align-items: center; z-index: 100; border-bottom: 2px solid var(--line-green); }
         #game-turn { font-weight: bold; color: var(--line-green); font-size: 16px; }
+
+        /* Game Board */
         .game-main { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; padding: 10px; }
         .board-container { position: relative; padding: 5px; background: var(--board-bg); border: 4px solid #b58d59; border-radius: 5px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
@@ -25,42 +27,42 @@
         .stone.white { background: #fff; transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .last-move::after { content: ''; width: 8px; height: 8px; background: #ff4757; border-radius: 50%; position: absolute; top:50%; left:50%; transform: translate(-50%, -50%); z-index: 10; border: 1px solid white; }
 
-        /* 對話框 */
-        #chat-area { height: 130px; background: #333; display: flex; flex-direction: column; }
+        /* Chat */
+        #chat-area { height: 130px; background: #333; display: flex; flex-direction: column; border-top: 1px solid #444; }
         #chat-msgs { flex: 1; overflow-y: auto; padding: 8px; font-size: 13px; color: #eee; }
         .chat-input-box { display: flex; padding: 8px; background: #222; gap: 5px; }
-        #chat-input { flex: 1; border-radius: 20px; border: none; padding: 6px 15px; background: #444; color: #fff; }
+        #chat-input { flex: 1; border-radius: 20px; border: none; padding: 6px 15px; background: #444; color: #fff; outline: none; }
+        .btn-send { background: var(--line-green); color: white; border: none; padding: 0 15px; border-radius: 15px; font-weight: bold; }
 
-        /* 勝負動畫 */
+        /* Overlays */
         #result-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.85); display: none; flex-direction: column; align-items: center; justify-content: center; }
         .result-text { font-size: 100px; font-weight: bold; }
         .win-style { color: #ffdf00; text-shadow: 0 0 20px #ff4500; animation: bounce 1s infinite; }
         .lose-style { color: #777; animation: fallDown 1.8s forwards; transform-origin: bottom right; }
-        .btn-new { background: var(--line-green); color: white; padding: 15px 40px; border-radius: 30px; border: none; font-weight: bold; margin-top: 20px; }
+        
+        #setup-screen { position: fixed; inset: 0; background: white; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+        .btn-invite { background: var(--line-green); color: white; border: none; padding: 20px; border-radius: 40px; width: 85%; font-size: 20px; font-weight: bold; }
 
         @keyframes bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
         @keyframes fallDown { 0% { transform: rotate(0deg); } 100% { transform: rotate(90deg) translateY(100px); opacity: 0; } }
-
-        /* 啟動遮罩 */
-        #setup-screen { position: fixed; inset: 0; background: white; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
     </style>
 </head>
 <body>
     <div id="setup-screen">
-        <h2 style="color:var(--line-green);">五子棋 Master v62</h2>
-        <p style="color:#888; text-align:center; margin-bottom: 30px;">發送邀請後，系統會為這對玩家<br>建立一個專屬的獨立棋室</p>
-        <button onclick="Game.sendInvite()" style="background:var(--line-green); color:white; border:none; padding:20px; border-radius:40px; width:85%; font-size:20px; font-weight:bold; box-shadow: 0 5px 15px rgba(6,199,85,0.4);">發起專屬挑戰</button>
+        <h2 style="color:var(--line-green);">五子棋 Master v63</h2>
+        <p style="color:#888; margin-bottom: 30px;">準備好與好友開局了嗎？</p>
+        <button onclick="Game.sendInvite()" class="btn-invite">發送對戰邀請</button>
     </div>
 
     <div id="result-overlay">
         <div id="status-char" class="result-text"></div>
-        <button class="btn-new" onclick="Game.resetGame()">再戰一局</button>
+        <button onclick="Game.resetGame()" style="background:var(--line-green); color:white; padding:15px 40px; border-radius:30px; border:none; font-weight:bold; margin-top:20px;">再戰一局</button>
         <button onclick="liff.closeWindow()" style="margin-top:15px; background:none; border:none; color:#aaa; text-decoration:underline;">結束離開</button>
     </div>
 
     <div class="header">
-        <div id="game-turn">正在載入...</div>
-        <div id="role-info" style="font-size:11px; color:#999">ID: ---</div>
+        <div id="game-turn">正在初始化...</div>
+        <div id="room-info" style="font-size:10px; color:#999">ROOM: ---</div>
     </div>
 
     <div class="game-main">
@@ -73,7 +75,7 @@
         <div id="chat-msgs"></div>
         <div class="chat-input-box">
             <input type="text" id="chat-input" placeholder="傳送訊息..." onkeypress="if(event.keyCode==13) Game.sendChat()">
-            <button onclick="Game.sendChat()" style="background:var(--line-green); color:white; border:none; padding:0 15px; border-radius:15px;">送出</button>
+            <button onclick="Game.sendChat()" class="btn-send">送出</button>
         </div>
     </div>
 
@@ -88,9 +90,10 @@
         };
 
         const Game = {
-            db: null, myUID: null, myName: "玩家", roomID: null, myRole: null,
+            db: null, myUID: null, myName: "玩家", roomID: null, myRole: null, data: null,
 
             async init() {
+                // 1. 建立棋盤
                 const b = document.getElementById('board');
                 for(let i=0; i<225; i++) {
                     let c = document.createElement('div');
@@ -98,89 +101,100 @@
                     c.innerHTML = '<div class="stone"></div>'; b.appendChild(c);
                 }
 
+                // 2. 初始化 LIFF
                 await liff.init({ liffId: LIFF_ID });
                 if (!liff.isLoggedIn()) { liff.login(); return; }
                 const p = await liff.getProfile();
                 this.myUID = p.userId;
                 this.myName = p.displayName;
 
+                // 3. 檢查 RoomID
                 const urlParams = new URLSearchParams(window.location.search);
                 this.roomID = urlParams.get('room');
 
-                // 如果網址沒有 Room ID，表示是發起者，先顯示邀請畫面
-                if (!this.roomID) {
-                    document.getElementById('setup-screen').style.display = 'flex';
-                } else {
+                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+
+                if (this.roomID) {
                     document.getElementById('setup-screen').style.display = 'none';
                     this.startRoom();
+                } else {
+                    document.getElementById('setup-screen').style.display = 'flex';
+                    document.getElementById('game-turn').innerText = "等待發起對戰";
                 }
-
-                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             },
 
             async sendInvite() {
-                // 🌟 關鍵改動：點擊邀請時，生成一個唯一的房間 ID
-                const uniqueRoom = "Room_" + this.myUID.substring(0,5) + "_" + Date.now();
-                const inviteURL = "https://liff.line.me/" + LIFF_ID + "?room=" + uniqueRoom;
+                const uniqueID = "R" + Math.floor(Date.now() / 1000);
+                const inviteURL = "https://liff.line.me/" + LIFF_ID + "?room=" + uniqueID;
                 
                 try {
                     await liff.shareTargetPicker([{
-                        type: "flex", altText: this.myName + " 發起五子棋戰局",
+                        type: "flex", altText: this.myName + " 邀你下五子棋",
                         contents: {
                             "type": "bubble",
-                            "body": { "type": "box", "layout": "vertical", "contents": [{"type": "text", "text": "⚔️ 專屬戰局已開啟", "weight": "bold", "color": "#06c755", "size": "xl"}] },
-                            "footer": { "type": "box", "layout": "vertical", "contents": [{"type": "button", "action": {"type": "uri", "label": "進入棋室應戰", "uri": inviteURL}, "style": "primary", "color": "#06c755"}] }
+                            "body": { "type": "box", "layout": "vertical", "contents": [{"type": "text", "text": "⚔️ 專屬挑戰已開啟", "weight": "bold", "color": "#06c755", "size": "xl"}] },
+                            "footer": { "type": "box", "layout": "vertical", "contents": [{"type": "button", "action": {"type": "uri", "label": "進入棋室", "uri": inviteURL}, "style": "primary", "color": "#06c755"}] }
                         }
                     }]);
-                    // 發送成功後，自己也進入該房間
-                    this.roomID = uniqueRoom;
+                    // 發送成功後，自己也進入該 RoomID 並啟動 Firebase
+                    this.roomID = uniqueID;
                     document.getElementById('setup-screen').style.display = 'none';
                     this.startRoom();
-                } catch (e) { alert("發送失敗，請確認 shareTargetPicker 權限"); }
+                } catch (e) { alert("請在 LINE 中開啟並允許傳送權限"); }
             },
 
             startRoom() {
-                this.db = firebase.database().ref('v62/' + this.roomID);
-                document.getElementById('role-info').innerText = "ID: " + this.roomID.split('_')[2];
+                if (!this.roomID) return;
+                document.getElementById('room-info').innerText = "ROOM: " + this.roomID;
+                this.db = firebase.database().ref('v63/' + this.roomID);
                 
                 this.db.on('value', snap => {
                     this.data = snap.val();
                     if (!this.data) {
+                        // 初始化房間資料
                         const firstTurn = Math.random() > 0.5 ? "Black" : "White";
-                        this.db.set({ board: Array(225).fill(""), turn: firstTurn, pB: this.myUID, pBName: this.myName, lastIdx: -1 });
+                        this.db.set({ 
+                            board: Array(225).fill(""), 
+                            turn: firstTurn, 
+                            pB: this.myUID, 
+                            pBName: this.myName, 
+                            lastIdx: -1 
+                        });
                     } else {
+                        // 判定角色
                         if (this.myUID === this.data.pB) this.myRole = "Black";
                         else if (this.myUID === this.data.pW) this.myRole = "White";
                         else if (!this.data.pW) {
                             this.db.update({ pW: this.myUID, pWName: this.myName });
                             this.myRole = "White";
-                        } else { this.myRole = "Viewer"; }
+                        } else {
+                            this.myRole = "Viewer";
+                        }
                         this.render();
                     }
                 });
 
-                // 訊息監聽 (防止重複綁定)
-                if (!this.chatBound) {
-                    this.db.child('chats').limitToLast(10).on('child_added', snap => {
-                        const c = snap.val();
-                        const line = document.createElement('div');
-                        line.innerHTML = `<span style="color:#06c755"><b>${c.name}:</b></span> ${c.msg}`;
-                        const box = document.getElementById('chat-msgs');
-                        box.appendChild(line);
-                        box.scrollTop = box.scrollHeight;
-                    });
-                    this.chatBound = true;
-                }
+                // 訊息監聽
+                this.db.child('chats').limitToLast(15).on('child_added', snap => {
+                    const c = snap.val();
+                    const line = document.createElement('div');
+                    line.style.marginBottom = "4px";
+                    line.innerHTML = `<span style="color:#06c755"><b>${c.name}:</b></span> ${c.msg}`;
+                    const box = document.getElementById('chat-msgs');
+                    box.appendChild(line);
+                    box.scrollTop = box.scrollHeight;
+                });
             },
 
             sendChat() {
                 const input = document.getElementById('chat-input');
-                if (!input.value.trim()) return;
+                if (!input.value.trim() || !this.db) return;
                 this.db.child('chats').push({ name: this.myName, msg: input.value });
                 input.value = '';
             },
 
             render() {
+                if (!this.data) return;
                 const cells = document.querySelectorAll('.cell');
                 this.data.board.forEach((v, i) => {
                     cells[i].querySelector('.stone').className = 'stone' + (v ? ' ' + v.toLowerCase() : '');
@@ -199,7 +213,8 @@
                     }
                 } else {
                     document.getElementById('result-overlay').style.display = 'none';
-                    document.getElementById('game-turn').innerText = this.data.turn === "Black" ? "⚫ 黑方回合" : "⚪ 白方回合";
+                    document.getElementById('game-turn').innerText = (this.data.turn === "Black" ? "⚫ 黑子回合" : "⚪ 白子回合") + 
+                    (this.myRole === this.data.turn ? " (你的回合)" : "");
                 }
             },
 
@@ -231,6 +246,7 @@
             },
 
             resetGame() {
+                if (!this.db) return;
                 const nextTurn = Math.random() > 0.5 ? "Black" : "White";
                 this.db.update({ board: Array(225).fill(""), turn: nextTurn, lastIdx: -1, winner: null });
             }
