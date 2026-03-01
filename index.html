@@ -3,77 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Gomoku Master v57</title>
+    <title>Gomoku Master v58</title>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
     <style>
         :root { --line-green: #06c755; --black: #333; --board-bg: #e3c193; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: sans-serif; margin: 0; background: #222; height: 100vh; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; }
         
-        /* 基礎佈局：確保滿版 */
-        body { 
-            font-family: -apple-system, system-ui, sans-serif; margin: 0; background: #222; height: 100vh; 
-            overflow: hidden; display: flex; flex-direction: column;
-            padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
-        }
-
-        /* 頂部操作列 */
-        .header { 
-            height: 70px; padding: 10px 20px; background: #fff; 
-            display: flex; justify-content: space-between; align-items: center; 
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3); z-index: 100;
-        }
-        #game-turn { font-weight: bold; color: var(--line-green); font-size: 20px; }
-        .btn-reset { background: #ff4757; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; }
-
-        /* 遊戲核心區 */
-        .game-main { flex: 1; width: 100%; display: flex; align-items: center; justify-content: center; position: relative; }
-        .board-container { position: relative; padding: 8px; background: var(--board-bg); border: 5px solid #b58d59; border-radius: 8px; }
+        .header { height: 60px; padding: 0 15px; background: #fff; display: flex; justify-content: space-between; align-items: center; z-index: 100; }
+        #game-turn { font-weight: bold; color: var(--line-green); font-size: 18px; }
+        
+        .game-main { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+        .board-container { position: relative; padding: 5px; background: var(--board-bg); border: 4px solid #b58d59; border-radius: 5px; }
         .board { display: grid; grid-template-columns: repeat(15, 1fr); background: var(--board-bg); }
-        .cell { width: 6.2vw; height: 6.2vw; max-width: 42px; max-height: 42px; border: 0.5px solid rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; position: relative; }
-        
-        /* 棋子樣式 */
-        .stone { width: 92%; height: 92%; border-radius: 50%; transform: scale(0); transition: 0.15s cubic-bezier(0.18, 0.89, 0.32, 1.28); z-index: 5; }
-        .stone.black { background: var(--black); transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+        .cell { width: 6.2vw; height: 6.2vw; max-width: 40px; max-height: 40px; border: 0.5px solid rgba(0,0,0,0.1); position: relative; }
+        .stone { width: 90%; height: 90%; border-radius: 50%; transform: scale(0); transition: 0.1s; position: absolute; top:5%; left:5%; }
+        .stone.black { background: var(--black); transform: scale(1); }
         .stone.white { background: #fff; transform: scale(1); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .last-move::after { content: ''; width: 10px; height: 10px; background: #ff4757; border-radius: 50%; position: absolute; z-index: 10; border: 2px solid white; }
+        .last-move::after { content: ''; width: 8px; height: 8px; background: #ff4757; border-radius: 50%; position: absolute; top:50%; left:50%; transform: translate(-50%, -50%); z-index: 10; border: 1px solid white; }
 
-        /* 💬 透明訊息面板 (關鍵修改) */
-        #chat-overlay { 
-            position: absolute; bottom: 40px; left: 20px; right: 20px; 
-            pointer-events: none; z-index: 500; display: flex; flex-direction: column; gap: 8px; 
-        }
-        .chat-msg { 
-            background: rgba(0, 0, 0, 0.6); color: white; backdrop-filter: blur(4px);
-            border-radius: 12px; padding: 8px 16px; font-size: 14px; width: fit-content;
-            max-width: 80%; animation: fadeIn 0.3s ease;
-        }
+        /* 💬 文字訊息面板 */
+        #chat-overlay { position: absolute; bottom: 20px; left: 15px; right: 15px; pointer-events: none; z-index: 500; display: flex; flex-direction: column; gap: 5px; }
+        .chat-msg { background: rgba(0,0,0,0.7); color: white; border-radius: 8px; padding: 6px 12px; font-size: 13px; width: fit-content; animation: slideUp 0.3s; }
 
-        /* 🚀 啟動遮罩 (邀請好友介面) */
-        #setup-screen { 
-            position: fixed; inset: 0; background: #fff; z-index: 2000; 
-            display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 30px; text-align: center; 
-        }
-        .btn-main { background: var(--line-green); color: white; border: none; padding: 20px 40px; border-radius: 40px; font-size: 22px; font-weight: bold; width: 90%; cursor: pointer; box-shadow: 0 6px 20px rgba(6,199,85,0.4); }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* 🚀 啟動遮罩 */
+        #setup-screen { position: fixed; inset: 0; background: white; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+        .btn-main { background: var(--line-green); color: white; border: none; padding: 18px; border-radius: 35px; font-size: 20px; font-weight: bold; width: 85%; cursor: pointer; }
+        
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div id="setup-screen">
-        <h1 style="color:var(--line-green); margin-bottom: 5px;">五子棋對局</h1>
-        <p style="color:#888; margin-bottom: 40px;">點擊下方按鈕開始邀請好友</p>
-        <button onclick="Game.sendInvite()" class="btn-main">邀請好友應戰</button>
-        <button onclick="Game.enterPublic()" style="margin-top:25px; background:none; border:none; color:#bbb; text-decoration:underline;">測試模式 (大廳)</button>
+        <h2 style="color:var(--line-green);">五子棋對局</h2>
+        <p style="color:#888; margin-bottom: 30px;">請先在後台開啟 LIFF features 下的<br><b>shareTargetPicker</b> 開關</p>
+        <button onclick="Game.sendInvite()" class="btn-main">邀請好友</button>
+        <button onclick="document.getElementById('setup-screen').style.display='none'" style="margin-top:20px; color:#aaa; background:none; border:none;">跳過，直接看棋盤</button>
     </div>
 
     <div class="header">
         <div>
-            <div id="game-turn">連線中...</div>
-            <div id="room-info" style="font-size:10px; color:#aaa">ROOM ID: ---</div>
+            <div id="game-turn">⚫ 黑子回合</div>
+            <div id="room-info" style="font-size:10px; color:#999">ROOM: ---</div>
         </div>
-        <button class="btn-reset" onclick="Game.resetGame()">重開局</button>
+        <button style="padding:5px 10px;" onclick="Game.resetGame()">重開局</button>
     </div>
 
     <div class="game-main">
@@ -95,138 +70,68 @@
 
         const Game = {
             db: null, myUID: null, myName: "玩家", roomID: null, data: null,
-
-            async init() {
-                // 初始化棋盤
-                const boardEl = document.getElementById('board');
+            init() {
+                const b = document.getElementById('board');
                 for(let i=0; i<225; i++) {
-                    let cell = document.createElement('div');
-                    cell.className = 'cell';
-                    cell.onclick = () => this.play(i);
-                    cell.innerHTML = '<div class="stone"></div>';
-                    boardEl.appendChild(cell);
+                    let c = document.createElement('div');
+                    c.className = 'cell'; c.onclick = () => this.play(i);
+                    c.innerHTML = '<div class="stone"></div>'; b.appendChild(c);
                 }
-
-                try {
-                    await liff.init({ liffId: LIFF_ID });
-                    if (!liff.isLoggedIn()) { liff.login(); return; }
-                    const profile = await liff.getProfile();
-                    this.myUID = profile.userId;
-                    this.myName = profile.displayName;
-                    
-                    const context = liff.getContext();
-                    this.roomID = context.groupId || context.roomId || context.utouId || "Solo_" + this.myUID;
-
-                    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                    this.connectFirebase();
-                } catch (e) { console.error(e); }
+                liff.init({ liffId: LIFF_ID }).then(() => {
+                    if (!liff.isLoggedIn()) liff.login();
+                    liff.getProfile().then(p => {
+                        this.myUID = p.userId; this.myName = p.displayName;
+                        const ctx = liff.getContext();
+                        this.roomID = ctx.groupId || ctx.roomId || ctx.utouId || "Test_" + this.myUID;
+                        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+                        this.connectFirebase();
+                    });
+                });
             },
-
-            // 💬 發送系統訊息到面板
-            logMessage(text) {
+            log(txt) {
                 const container = document.getElementById('chat-overlay');
-                const msg = document.createElement('div');
-                msg.className = 'chat-msg';
-                msg.innerText = text;
-                container.appendChild(msg);
-                setTimeout(() => msg.remove(), 5000); // 5秒後自動消失
+                const m = document.createElement('div');
+                m.className = 'chat-msg'; m.innerText = txt;
+                container.appendChild(m);
+                setTimeout(() => m.remove(), 4000);
             },
-
             async sendInvite() {
                 try {
                     await liff.shareTargetPicker([{
-                        type: "flex", altText: "五子棋對戰邀請",
-                        contents: {
-                            "type": "bubble",
-                            "body": { "type": "box", "layout": "vertical", "contents": [{"type": "text", "text": "⚔️ " + this.myName + " 邀請你下棋", "weight": "bold", "color": "#06c755"}] },
-                            "footer": { "type": "box", "layout": "vertical", "contents": [{"type": "button", "action": {"type": "uri", "label": "進入棋室", "uri": "https://liff.line.me/" + LIFF_ID + "?v=" + Date.now()}, "style": "primary", "color": "#06c755"}] }
-                        }
+                        type: "flex", altText: "五子棋對戰",
+                        contents: { "type": "bubble", "body": { "type": "box", "layout": "vertical", "contents": [{"type": "text", "text": "⚔️ 應戰吧！", "color": "#06c755"}] }, "footer": { "type": "box", "layout": "vertical", "contents": [{"type": "button", "action": {"type": "uri", "label": "進入棋室", "uri": "https://liff.line.me/"+LIFF_ID+"?v="+Date.now()}, "style": "primary", "color": "#06c755"}] } }
                     }]);
                     document.getElementById('setup-screen').style.display = 'none';
-                    this.logMessage("✅ 邀請已送出，等待對手...");
-                } catch (e) { alert("請確認 LINE Developers 後台已開啟 ShareTargetPicker 權限。"); }
+                    this.log("✅ 邀請發送成功");
+                } catch (e) { alert("尚未開啟後台 shareTargetPicker 權限！"); }
             },
-
-            enterPublic() {
-                this.roomID = "Lobby_Test";
-                this.connectFirebase();
-                document.getElementById('setup-screen').style.display = 'none';
-            },
-
             connectFirebase() {
-                this.db = firebase.database().ref('v57/' + this.roomID);
-                document.getElementById('room-info').innerText = "ID: " + this.roomID.substring(0, 12);
+                this.db = firebase.database().ref('v58/' + this.roomID);
+                document.getElementById('room-info').innerText = "ID: " + this.roomID.substring(0, 10);
                 this.db.on('value', snap => {
-                    const oldData = this.data;
                     this.data = snap.val();
                     if (!this.data) {
                         this.db.set({ board: Array(225).fill(""), turn: "Black", pB: this.myUID, pBName: this.myName, lastIdx: -1 });
-                    } else {
-                        // 偵測對手進入
-                        if (oldData && !oldData.pW && this.data.pW && this.myUID === this.data.pB) {
-                            this.logMessage("⚔️ 對手 " + this.data.pWName + " 已進入！");
-                        }
-                        this.render();
-                    }
+                    } else { this.render(); }
                 });
             },
-
             render() {
                 const cells = document.querySelectorAll('.cell');
                 this.data.board.forEach((v, i) => {
                     cells[i].querySelector('.stone').className = 'stone' + (v ? ' ' + v.toLowerCase() : '');
                     cells[i].classList.toggle('last-move', i === this.data.lastIdx);
                 });
-                document.getElementById('game-turn').innerText = this.data.winner ? (this.data.winner === "Black" ? "黑棋獲勝!" : "白棋獲勝!") : (this.data.turn === "Black" ? "⚫ 黑子回合" : "⚪ 白子回合");
+                document.getElementById('game-turn').innerText = this.data.winner ? (this.data.winner + " 勝!") : (this.data.turn === "Black" ? "⚫ 黑子回合" : "⚪ 白子回合");
             },
-
             play(i) {
                 if (!this.data || this.data.winner || this.data.board[i]) return;
                 let role = (this.myUID === this.data.pB) ? "Black" : "White";
-                
-                // 自動分配白方角色
-                if (!this.data.pW && this.myUID !== this.data.pB) {
-                    this.db.update({ pW: this.myUID, pWName: this.myName });
-                    role = "White";
-                }
-
-                if (role !== this.data.turn) {
-                    this.logMessage("⚠️ 現在還不是你的回合喔！");
-                    return;
-                }
-
-                const b = [...this.data.board];
-                b[i] = role;
-                
-                if (this.checkWin(b, i, role)) {
-                    this.db.update({ board: b, lastIdx: i, winner: role });
-                } else {
-                    this.db.update({ board: b, turn: role === "Black" ? "White" : "Black", lastIdx: i });
-                }
+                if (!this.data.pW && this.myUID !== this.data.pB) { this.db.update({ pW: this.myUID, pWName: this.myName }); role = "White"; }
+                if (role !== this.data.turn) { this.log("⚠️ 不是你的回合"); return; }
+                const b = [...this.data.board]; b[i] = role;
+                this.db.update({ board: b, turn: role === "Black" ? "White" : "Black", lastIdx: i });
             },
-
-            checkWin(b, idx, color) {
-                const r = Math.floor(idx/15), c = idx%15;
-                const dirs = [[1,0],[0,1],[1,1],[1,-1]];
-                for(let [dr, dc] of dirs) {
-                    let cnt = 1;
-                    for(let s of [1,-1]) {
-                        let currR = r + dr*s, currC = c + dc*s;
-                        while(currR>=0 && currR<15 && currC>=0 && currC<15 && b[currR*15+currC] === color) {
-                            cnt++; currR += dr*s; currC += dc*s;
-                        }
-                    }
-                    if(cnt>=5) return true;
-                }
-                return false;
-            },
-
-            resetGame() {
-                if(confirm("確定要清空棋盤重新開始嗎？")) {
-                    this.db.update({ board: Array(225).fill(""), turn: "Black", lastIdx: -1, winner: null });
-                    this.logMessage("🔄 棋局已重置");
-                }
-            }
+            resetGame() { if(confirm("重開？")) this.db.update({ board: Array(225).fill(""), turn: "Black", lastIdx: -1, winner: null }); }
         };
         Game.init();
     </script>
